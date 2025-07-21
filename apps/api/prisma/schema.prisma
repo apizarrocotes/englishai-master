@@ -1,0 +1,190 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users and Authentication
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  name             String
+  avatarUrl        String?  @map("avatar_url")
+  provider         String
+  providerId       String   @map("provider_id")
+  subscriptionTier String   @default("free") @map("subscription_tier")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  learningProfile    LearningProfile?
+  conversationSessions ConversationSession[]
+  userProgress         UserProgress[]
+  learningAnalytics    LearningAnalytics[]
+
+  @@map("users")
+}
+
+// Learning Profiles
+model LearningProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique @map("user_id")
+  currentLevel      String   @map("current_level")
+  targetLevel       String?  @map("target_level")
+  learningGoals     String[] @map("learning_goals")
+  nativeLanguage    String   @default("es") @map("native_language")
+  weeklyGoalMinutes Int      @default(300) @map("weekly_goal_minutes")
+  preferredSchedule Json     @map("preferred_schedule")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("learning_profiles")
+}
+
+// Learning Paths and Content
+model LearningPath {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  levelRange     String   @map("level_range")
+  category       String
+  totalLessons   Int      @map("total_lessons")
+  estimatedHours Int      @map("estimated_hours")
+  isActive       Boolean  @default(true) @map("is_active")
+
+  // Relations
+  lessons Lesson[]
+
+  @@map("learning_paths")
+}
+
+model Lesson {
+  id                 String   @id @default(cuid())
+  pathId             String   @map("path_id")
+  orderIndex         Int      @map("order_index")
+  title              String
+  description        String?
+  scenarioType       String   @map("scenario_type")
+  learningObjectives String[] @map("learning_objectives")
+  vocabulary         Json
+  grammarFocus       String[] @map("grammar_focus")
+  difficultyLevel    Int      @default(1) @map("difficulty_level")
+  estimatedDuration  Int      @map("estimated_duration") // in minutes
+
+  // Relations
+  path                   LearningPath          @relation(fields: [pathId], references: [id])
+  conversationScenarios ConversationScenario[]
+  userProgress           UserProgress[]
+
+  @@map("lessons")
+}
+
+// Conversation System
+model ConversationScenario {
+  id              String   @id @default(cuid())
+  lessonId        String?  @map("lesson_id")
+  name            String
+  context         String
+  aiPersona       Json     @map("ai_persona")
+  successCriteria Json     @map("success_criteria")
+  maxDuration     Int      @default(1800) @map("max_duration") // 30 minutes in seconds
+
+  // Relations
+  lesson              Lesson?               @relation(fields: [lessonId], references: [id])
+  conversationSessions ConversationSession[]
+
+  @@map("conversation_scenarios")
+}
+
+model ConversationSession {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  scenarioId    String   @map("scenario_id")
+  status        String   @default("active")
+  durationSeconds Int    @default(0) @map("duration_seconds")
+  messagesCount Int      @default(0) @map("messages_count")
+  score         Json?
+  feedback      String?
+  startedAt     DateTime @default(now()) @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+
+  // Relations
+  user     User                     @relation(fields: [userId], references: [id])
+  scenario ConversationScenario     @relation(fields: [scenarioId], references: [id])
+  messages ConversationMessage[]
+
+  @@map("conversation_sessions")
+}
+
+model ConversationMessage {
+  id          String   @id @default(cuid())
+  sessionId   String   @map("session_id")
+  sender      String   // 'user' or 'ai'
+  content     String
+  audioUrl    String?  @map("audio_url")
+  corrections Json?
+  timestamp   DateTime @default(now())
+
+  // Relations
+  session ConversationSession @relation(fields: [sessionId], references: [id])
+
+  @@map("conversation_messages")
+}
+
+// Progress and Analytics
+model UserProgress {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  lessonId    String    @map("lesson_id")
+  status      String    @default("not_started")
+  score       Int?
+  timeSpent   Int       @default(0) @map("time_spent") // in seconds
+  attempts    Int       @default(0)
+  completedAt DateTime? @map("completed_at")
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id])
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@unique([userId, lessonId])
+  @@map("user_progress")
+}
+
+model LearningAnalytics {
+  id                String   @id @default(cuid())
+  userId            String   @map("user_id")
+  date              DateTime
+  minutesPracticed  Int      @default(0) @map("minutes_practiced")
+  lessonsCompleted  Int      @default(0) @map("lessons_completed")
+  conversationsCount Int     @default(0) @map("conversations_count")
+  averageScore      Decimal? @map("average_score") @db.Decimal(3, 1)
+  strengths         String[]
+  weaknesses        String[]
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId, date])
+  @@map("learning_analytics")
+}
+
+// Indexes for performance
+// User indexes
+// @@index([email])
+
+// Conversation indexes
+// @@index([userId]) on ConversationSession
+// @@index([sessionId]) on ConversationMessage
+
+// Progress indexes  
+// @@index([userId]) on UserProgress
+// @@index([userId, date]) on LearningAnalytics
