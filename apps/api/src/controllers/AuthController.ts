@@ -187,4 +187,111 @@ export class AuthController {
       next(error);
     }
   };
+
+  register = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, password, name } = req.body;
+
+      // Validate email format
+      if (!this.authService.validateEmail(email)) {
+        throw createError('Invalid email format', 400);
+      }
+
+      // Validate password strength
+      const passwordValidation = this.authService.validatePassword(password);
+      if (!passwordValidation.isValid) {
+        throw createError(`Password validation failed: ${passwordValidation.errors.join(', ')}`, 400);
+      }
+
+      // Check if user already exists
+      const existingUser = await this.userService.getUserByEmail(email);
+      if (existingUser) {
+        throw createError('User with this email already exists', 409);
+      }
+
+      // Hash password
+      const hashedPassword = await this.authService.hashPassword(password);
+
+      // Create user
+      const user = await this.userService.createUser({
+        email,
+        name,
+        password: hashedPassword,
+        provider: 'email',
+      });
+
+      // Generate tokens
+      const tokens = await this.authService.generateTokens(user.id);
+
+      logger.info('User registered successfully', { userId: user.id, email: user.email });
+
+      res.status(201).json({
+        success: true,
+        message: 'User registered successfully',
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+        },
+        tokens,
+      });
+    } catch (error) {
+      logger.error('Registration failed', { error: (error as Error).message });
+      next(error);
+    }
+  };
+
+  login = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email, password } = req.body;
+
+      // Validate input
+      if (!email || !password) {
+        throw createError('Email and password are required', 400);
+      }
+
+      if (!this.authService.validateEmail(email)) {
+        throw createError('Invalid email format', 400);
+      }
+
+      // Find user by email
+      const user = await this.userService.getUserByEmail(email);
+      if (!user) {
+        throw createError('Invalid credentials', 401);
+      }
+
+      // For OAuth users, password login is not allowed
+      if (user.provider !== 'email' || !user.password) {
+        throw createError('Please use your OAuth provider to sign in', 400);
+      }
+
+      // Verify password
+      const isPasswordValid = await this.authService.comparePassword(password, user.password);
+      if (!isPasswordValid) {
+        throw createError('Invalid credentials', 401);
+      }
+
+      // Generate tokens
+      const tokens = await this.authService.generateTokens(user.id);
+
+      logger.info('User logged in successfully', { userId: user.id, email: user.email });
+
+      res.json({
+        success: true,
+        message: 'Login successful',
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          subscriptionTier: user.subscriptionTier,
+        },
+        tokens,
+      });
+    } catch (error) {
+      logger.error('Login failed', { error: (error as Error).message, email: req.body?.email });
+      next(error);
+    }
+  };
 }

@@ -7,9 +7,10 @@ const prisma = new PrismaClient();
 interface CreateUserData {
   email: string;
   name: string;
+  password?: string;
   avatarUrl?: string;
   provider: string;
-  providerId: string;
+  providerId?: string;
 }
 
 export class UserService {
@@ -41,6 +42,7 @@ export class UserService {
         data: {
           email: data.email,
           name: data.name,
+          password: data.password,
           avatarUrl: data.avatarUrl,
           provider: data.provider,
           providerId: data.providerId,
@@ -105,6 +107,52 @@ export class UserService {
     } catch (error) {
       logger.error('Error updating user', { error: (error as Error).message, userId });
       throw createError('Failed to update user', 500);
+    }
+  }
+
+  async getUserByEmail(email: string) {
+    try {
+      return await prisma.user.findUnique({
+        where: { email },
+        include: { learningProfile: true }
+      });
+    } catch (error) {
+      logger.error('Error finding user by email', { error: (error as Error).message, email });
+      throw createError('Failed to find user', 500);
+    }
+  }
+
+  async createUser(data: CreateUserData) {
+    try {
+      const newUser = await prisma.user.create({
+        data: {
+          email: data.email,
+          name: data.name,
+          password: data.password,
+          avatarUrl: data.avatarUrl,
+          provider: data.provider,
+          providerId: data.providerId,
+          learningProfile: {
+            create: {
+              currentLevel: 'A1', // Will be updated during onboarding
+              learningGoals: ['general'],
+              nativeLanguage: 'es',
+              weeklyGoalMinutes: 300,
+              preferredSchedule: {
+                days: ['monday', 'wednesday', 'friday'],
+                timeSlots: ['evening']
+              }
+            }
+          }
+        },
+        include: { learningProfile: true }
+      });
+
+      logger.info('User created', { userId: newUser.id, email: newUser.email });
+      return newUser;
+    } catch (error) {
+      logger.error('Error creating user', { error: (error as Error).message, email: data.email });
+      throw createError('Failed to create user', 500);
     }
   }
 

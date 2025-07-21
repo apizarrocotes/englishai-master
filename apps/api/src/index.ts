@@ -17,11 +17,17 @@ import { setupSocketHandlers } from '@/services/socket';
 
 dotenv.config();
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://193.70.3.183:3000',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -31,8 +37,9 @@ const PORT = process.env.PORT || 3001;
 
 // Security middleware
 app.use(helmet());
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: allowedOrigins,
   credentials: true,
 }));
 
