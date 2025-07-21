@@ -1,0 +1,34 @@
+name: Claude Code Action
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: 'Prompt for Claude'
+        required: true
+        type: string
+      continue_on_error:
+        description: 'Continue on error'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  claude:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run Claude Code Action
+        uses: anthropics/claude-code-action@v1
+        with:
+          prompt: ${{ inputs.prompt }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          continue_on_error: ${{ inputs.continue_on_error }}
