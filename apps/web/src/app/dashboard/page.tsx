@@ -124,7 +124,10 @@ export default function DashboardPage() {
             <p className="text-gray-600 text-sm mb-4">
               Learn through structured lessons with real-world scenarios
             </p>
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+            <button 
+              onClick={() => router.push('/learning')}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
               Start Learning
             </button>
           </motion.div>
