@@ -11,9 +11,11 @@ import {
   Volume2,
   CheckCircle,
   PlayCircle,
-  PauseCircle
+  PauseCircle,
+  MessageCircle
 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
+import AIConversation from '@/components/conversation/AIConversation';
 
 interface Lesson {
   id: string;
@@ -53,6 +55,9 @@ export default function LessonPage() {
   const [error, setError] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [showConversation, setShowConversation] = useState(false);
+  const [conversationComplete, setConversationComplete] = useState(false);
+  const [conversationScore, setConversationScore] = useState<number | null>(null);
 
   useEffect(() => {
     initialize();
@@ -143,12 +148,23 @@ export default function LessonPage() {
     }
   };
 
-  const completeLesson = async () => {
+  const handleConversationComplete = (evaluation: any) => {
+    setConversationComplete(true);
+    setConversationScore(evaluation.overallScore);
+    setShowConversation(false);
+    
+    // Auto-complete lesson if conversation score is good
+    if (evaluation.overallScore >= 70) {
+      completeLesson(evaluation.overallScore);
+    }
+  };
+
+  const completeLesson = async (score?: number) => {
     setIsCompleting(true);
     try {
-      // Simulate lesson completion with a score
-      const simulatedScore = Math.floor(Math.random() * 30) + 70; // 70-100 score
-      await updateProgress('completed', simulatedScore);
+      // Use conversation score or simulate lesson completion
+      const finalScore = score || conversationScore || Math.floor(Math.random() * 30) + 70;
+      await updateProgress('completed', finalScore);
       
       // Show success and redirect after a delay
       setTimeout(() => {
@@ -336,27 +352,93 @@ export default function LessonPage() {
           </motion.div>
         )}
 
-        {/* Lesson Content Placeholder */}
+        {/* Lesson Content - AI Conversation */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.5 }}
           className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8"
         >
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Lesson Content</h2>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
-            <PlayCircle className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Interactive Lesson Content</h3>
-            <p className="text-gray-600 mb-4">
-              This is where the interactive lesson content would be displayed. 
-              This could include videos, exercises, quizzes, and conversational practice.
-            </p>
-            <p className="text-sm text-gray-500">
-              In a full implementation, this would contain rich interactive content 
-              tailored to the lesson objectives and user's learning level.
-            </p>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Practice with AI Teacher</h2>
+            {!showConversation && (
+              <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                Interactive
+              </div>
+            )}
           </div>
+          
+          {!showConversation ? (
+            <div className="border-2 border-dashed border-blue-300 rounded-lg p-8 text-center bg-blue-50">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <MessageCircle className="w-8 h-8 text-blue-600" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Start Conversation Practice</h3>
+              <p className="text-gray-600 mb-4 max-w-md mx-auto">
+                Practice {lesson.title.toLowerCase()} with our AI teacher. Get real-time feedback, 
+                corrections, and personalized guidance based on your responses.
+              </p>
+              <div className="flex items-center justify-center space-x-4 mb-6">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">{lesson.estimatedDuration}</div>
+                  <div className="text-sm text-gray-600">minutes</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">{lesson.learningObjectives.length}</div>
+                  <div className="text-sm text-gray-600">objectives</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-purple-600">{Object.keys(lesson.vocabulary || {}).length}</div>
+                  <div className="text-sm text-gray-600">vocabulary</div>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowConversation(true)}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center mx-auto"
+              >
+                <MessageCircle className="w-5 h-5 mr-2" />
+                Start AI Conversation
+              </button>
+            </div>
+          ) : (
+            <div className="h-[600px]">
+              <AIConversation
+                lessonId={lessonId}
+                onClose={() => setShowConversation(false)}
+                onComplete={handleConversationComplete}
+              />
+            </div>
+          )}
         </motion.div>
+
+        {/* Conversation Results */}
+        {conversationComplete && conversationScore && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="bg-green-50 border border-green-200 rounded-xl p-6 mb-8"
+          >
+            <div className="text-center">
+              <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-green-900 mb-2">Great Conversation Practice!</h3>
+              <p className="text-green-700 mb-4">
+                You completed the AI conversation with a score of <span className="font-bold">{conversationScore}%</span>
+              </p>
+              <div className="w-full bg-green-200 rounded-full h-2 mb-4">
+                <div 
+                  className="bg-green-600 h-2 rounded-full transition-all duration-1000"
+                  style={{ width: `${conversationScore}%` }}
+                ></div>
+              </div>
+              <p className="text-sm text-green-600">
+                {conversationScore >= 90 ? 'Excellent work!' : 
+                 conversationScore >= 80 ? 'Well done!' :
+                 conversationScore >= 70 ? 'Good job!' : 'Keep practicing!'}
+              </p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Action Buttons */}
         <motion.div
@@ -372,9 +454,19 @@ export default function LessonPage() {
             Back to Path
           </button>
           
-          {lesson.userProgress?.status !== 'completed' && (
+          {!conversationComplete && !showConversation && lesson.userProgress?.status !== 'completed' && (
             <button
-              onClick={completeLesson}
+              onClick={() => setShowConversation(true)}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center"
+            >
+              <MessageCircle className="w-5 h-5 mr-2" />
+              Practice with AI
+            </button>
+          )}
+
+          {(conversationComplete || lesson.userProgress?.status !== 'completed') && !showConversation && (
+            <button
+              onClick={() => completeLesson()}
               disabled={isCompleting}
               className="px-8 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
             >
@@ -386,7 +478,7 @@ export default function LessonPage() {
               ) : (
                 <>
                   <CheckCircle className="w-5 h-5 mr-2" />
-                  Complete Lesson
+                  {conversationComplete ? 'Complete Lesson' : 'Skip to Complete'}
                 </>
               )}
             </button>
