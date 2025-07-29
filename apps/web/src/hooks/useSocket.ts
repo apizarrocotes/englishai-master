@@ -19,7 +19,10 @@ interface SocketEvents {
 
 export function useSocket(options: UseSocketOptions = {}) {
   const socketRef = useRef<Socket | null>(null);
-  const { url = 'http://localhost:3001', autoConnect = false } = options;
+  
+  // Get API URL from environment variable with fallback
+  const defaultUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+  const { url = defaultUrl, autoConnect = false } = options;
 
   useEffect(() => {
     if (autoConnect) {
