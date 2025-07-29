@@ -5,7 +5,6 @@ import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
-// import expressWs from 'express-ws';
 
 import { errorHandler } from '@/middleware/errorHandler';
 import { logger } from '@/utils/logger';
@@ -14,9 +13,6 @@ import { userRoutes } from '@/routes/users';
 import { conversationRoutes } from '@/routes/conversations';
 import { learningRoutes } from '@/routes/learning';
 import { analyticsRoutes } from '@/routes/analytics';
-// import { voiceRoutes } from '@/routes/voice';
-import { setupSocketHandlers } from '@/services/socket';
-// import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
 dotenv.config();
 
@@ -31,16 +27,11 @@ const getDefaultOrigins = () => {
 
 const allowedOrigins = [
   ...getDefaultOrigins(),
-  'http://89.58.17.78:3000',
   process.env.FRONTEND_URL
-].filter(Boolean) as string[];
+].filter(Boolean);
 
 const app = express();
 const httpServer = createServer(app);
-
-// Setup WebSocket support
-// const wsInstance = expressWs(app, httpServer);
-// const wsApp = wsInstance.app;
 
 const io = new Server(httpServer, {
   cors: {
@@ -50,7 +41,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = parseInt(process.env.PORT || '3001', 10);
+const PORT = process.env.PORT || 3002;
 
 // Security middleware
 app.use(helmet());
@@ -104,13 +95,6 @@ app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
-// app.use('/api/voice', voiceRoutes);
-
-// Socket.IO setup
-setupSocketHandlers(io);
-
-// WebSocket setup for voice
-// setupVoiceWebSocket(wsApp);
 
 // Error handling
 app.use(errorHandler);
@@ -125,7 +109,7 @@ app.use('*', (req, res) => {
 
 // Start server
 httpServer.listen(PORT, '0.0.0.0', () => {
-  logger.info(`🚀 Server running on http://0.0.0.0:${PORT}`, {
+  logger.info(`🚀 Minimal server running on http://0.0.0.0:${PORT}`, {
     environment: process.env.NODE_ENV,
     port: PORT,
     host: '0.0.0.0'
