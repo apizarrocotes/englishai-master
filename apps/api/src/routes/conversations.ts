@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ConversationController } from '@/controllers/ConversationController';
 import { validateRequest } from '@/middleware/validation';
+import { authenticateToken } from '@/middleware/auth';
 import { body, param, query } from 'express-validator';
 
 const router = Router();
@@ -8,6 +9,7 @@ const conversationController = new ConversationController();
 
 // Start a new conversation session
 router.post('/start', 
+  authenticateToken,
   body('lessonId').isString().notEmpty().withMessage('Lesson ID is required'),
   body('scenarioId').optional().isString().withMessage('Scenario ID must be a string'),
   validateRequest,
@@ -16,6 +18,7 @@ router.post('/start',
 
 // Send a message in conversation
 router.post('/:sessionId/message',
+  authenticateToken,
   param('sessionId').isString().notEmpty().withMessage('Session ID is required'),
   body('message').isString().notEmpty().withMessage('Message is required')
     .isLength({ min: 1, max: 1000 }).withMessage('Message must be between 1 and 1000 characters'),
@@ -25,6 +28,7 @@ router.post('/:sessionId/message',
 
 // End conversation and get evaluation
 router.post('/:sessionId/end',
+  authenticateToken,
   param('sessionId').isString().notEmpty().withMessage('Session ID is required'),
   validateRequest,
   conversationController.endConversation
@@ -32,6 +36,7 @@ router.post('/:sessionId/end',
 
 // Get conversation session details
 router.get('/:sessionId', 
+  authenticateToken,
   param('sessionId').isString().notEmpty().withMessage('Session ID is required'),
   validateRequest,
   conversationController.getConversation
@@ -39,6 +44,7 @@ router.get('/:sessionId',
 
 // Get user's conversation history
 router.get('/history/user',
+  authenticateToken,
   query('limit').optional().isInt({ min: 1, max: 50 }).withMessage('Limit must be between 1 and 50'),
   validateRequest,
   conversationController.getConversationHistory

@@ -16,6 +16,7 @@ import {
   Users
 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
+import { TokenStorage } from '@/lib/auth';
 
 interface Lesson {
   id: string;
@@ -78,7 +79,13 @@ export default function LearningPathPage() {
   const fetchLearningPath = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
+      const token = TokenStorage.getAccessToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      console.log('🔍 Fetching learning path:', pathId, 'with token:', token ? 'present' : 'missing');
       
       const response = await fetch(`/api/learning/paths/${pathId}`, {
         headers: {
@@ -88,14 +95,21 @@ export default function LearningPathPage() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch learning path');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('✅ Learning path data received:', data.data);
       setLearningPath(data.data);
     } catch (error) {
       console.error('Error fetching learning path:', error);
-      setError('Failed to load learning path. Please try again.');
+      setError(`Failed to load learning path. ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }

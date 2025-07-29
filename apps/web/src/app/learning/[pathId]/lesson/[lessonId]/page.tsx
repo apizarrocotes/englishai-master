@@ -15,7 +15,8 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
-import AIConversation from '@/components/conversation/AIConversation';
+import SimpleAIChat from '@/components/conversation/SimpleAIChat';
+import { TokenStorage } from '@/lib/auth';
 
 interface Lesson {
   id: string;
@@ -88,7 +89,7 @@ export default function LessonPage() {
   const fetchLesson = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
+      const token = TokenStorage.getAccessToken();
       
       const response = await fetch(`/api/learning/lessons/${lessonId}`, {
         headers: {
@@ -113,7 +114,7 @@ export default function LessonPage() {
 
   const updateProgress = async (status: string, score?: number) => {
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = TokenStorage.getAccessToken();
       const timeSpent = startTime ? Math.floor((Date.now() - startTime.getTime()) / 1000) : 0;
       
       const response = await fetch('/api/learning/progress', {
@@ -155,7 +156,11 @@ export default function LessonPage() {
     
     // Auto-complete lesson if conversation score is good
     if (evaluation.overallScore >= 70) {
-      completeLesson(evaluation.overallScore);
+      // Refresh lesson data to get updated progress from backend
+      setTimeout(() => {
+        fetchLesson();
+        completeLesson(evaluation.overallScore);
+      }, 1000);
     }
   };
 
@@ -402,9 +407,8 @@ export default function LessonPage() {
             </div>
           ) : (
             <div className="h-[600px]">
-              <AIConversation
+              <SimpleAIChat
                 lessonId={lessonId}
-                onClose={() => setShowConversation(false)}
                 onComplete={handleConversationComplete}
               />
             </div>

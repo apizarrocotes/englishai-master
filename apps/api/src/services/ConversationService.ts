@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { OpenAIService } from './OpenAIService';
+import { LearningService } from './LearningService';
 import { logger } from '@/utils/logger';
 
 const prisma = new PrismaClient();
@@ -56,9 +57,11 @@ export interface ConversationSession {
 
 export class ConversationService {
   private openAIService: OpenAIService;
+  private learningService: LearningService;
 
   constructor() {
     this.openAIService = new OpenAIService();
+    this.learningService = new LearningService();
   }
 
   /**
@@ -66,6 +69,37 @@ export class ConversationService {
    */
   async startConversation(data: StartConversationData): Promise<ConversationSession> {
     try {
+      // Check for existing active sessions for this user and lesson
+      const existingSession = await prisma.conversationSession.findFirst({
+        where: {
+          userId: data.userId,
+          status: 'active',
+          scenario: {
+            lessonId: data.lessonId
+          }
+        },
+        include: {
+          scenario: {
+            include: {
+              lesson: true
+            }
+          },
+          messages: {
+            orderBy: { timestamp: 'asc' }
+          }
+        }
+      });
+
+      // If there's an existing active session, return it instead of creating a new one
+      if (existingSession) {
+        logger.info('Returning existing active conversation session', {
+          sessionId: existingSession.id,
+          userId: data.userId,
+          lessonId: data.lessonId
+        });
+        return existingSession as ConversationSession;
+      }
+
       // Get lesson and scenario information
       const lesson = await prisma.lesson.findUnique({
         where: { id: data.lessonId },
@@ -337,29 +371,12 @@ export class ConversationService {
 
       // Update user progress if this was a good conversation (score >= 70)
       if (evaluation.overallScore >= 70) {
-        await prisma.userProgress.upsert({
-          where: {
-            userId_lessonId: {
-              userId,
-              lessonId: session.scenario.lesson.id
-            }
-          },
-          update: {
-            status: 'completed',
-            score: evaluation.overallScore,
-            timeSpent: { increment: updatedSession.durationSeconds },
-            attempts: { increment: 1 },
-            completedAt: new Date()
-          },
-          create: {
-            userId,
-            lessonId: session.scenario.lesson.id,
-            status: 'completed',
-            score: evaluation.overallScore,
-            timeSpent: updatedSession.durationSeconds,
-            attempts: 1,
-            completedAt: new Date()
-          }
+        await this.learningService.updateProgress({
+          userId,
+          lessonId: session.scenario.lesson.id,
+          status: 'completed',
+          score: evaluation.overallScore,
+          timeSpent: updatedSession.durationSeconds
         });
       }
 

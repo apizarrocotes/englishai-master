@@ -1,14 +1,16 @@
 import { Router } from 'express';
 import { LearningController } from '@/controllers/LearningController';
 import { validateRequest } from '@/middleware/validation';
+import { authenticateToken, optionalAuth } from '@/middleware/auth';
 import { body, param, query } from 'express-validator';
 
 const router = Router();
 const learningController = new LearningController();
 
 // Learning Paths routes
-router.get('/paths', learningController.getLearningPaths);
+router.get('/paths', authenticateToken, learningController.getLearningPaths);
 router.get('/paths/:pathId', 
+  optionalAuth,
   param('pathId').isString().notEmpty().withMessage('Path ID is required'),
   validateRequest,
   learningController.getLearningPathById
@@ -26,11 +28,13 @@ router.post('/paths',
 
 // Lessons routes
 router.get('/paths/:pathId/lessons', 
+  optionalAuth,
   param('pathId').isString().notEmpty().withMessage('Path ID is required'),
   validateRequest,
   learningController.getLessonsByPath
 );
 router.get('/lessons/:lessonId', 
+  optionalAuth,
   param('lessonId').isString().notEmpty().withMessage('Lesson ID is required'),
   validateRequest,
   learningController.getLessonById
@@ -51,11 +55,13 @@ router.post('/lessons',
 
 // Progress routes
 router.get('/progress', 
+  authenticateToken,
   query('pathId').optional().isString(),
   validateRequest,
   learningController.getUserProgress
 );
 router.post('/progress', 
+  authenticateToken,
   body('lessonId').isString().notEmpty().withMessage('Lesson ID is required'),
   body('status').isIn(['not_started', 'in_progress', 'completed']).withMessage('Status must be not_started, in_progress, or completed'),
   body('score').optional().isInt({ min: 0, max: 100 }).withMessage('Score must be between 0 and 100'),

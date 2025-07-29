@@ -372,6 +372,24 @@ export class LearningService {
       });
       
       if (!lesson) return;
+
+      // Get current analytics to calculate proper average score
+      const currentAnalytics = await prisma.learningAnalytics.findUnique({
+        where: {
+          userId_date: {
+            userId,
+            date: today
+          }
+        }
+      });
+
+      let newAverageScore = score;
+      if (currentAnalytics && currentAnalytics.averageScore && score) {
+        // Calculate weighted average with previous lessons completed today
+        const totalLessons = currentAnalytics.lessonsCompleted + 1;
+        const currentTotal = Number(currentAnalytics.averageScore) * currentAnalytics.lessonsCompleted;
+        newAverageScore = Math.round((currentTotal + score) / totalLessons);
+      }
       
       // Update or create daily analytics
       await prisma.learningAnalytics.upsert({
@@ -384,7 +402,8 @@ export class LearningService {
         update: {
           lessonsCompleted: { increment: 1 },
           minutesPracticed: { increment: lesson.estimatedDuration },
-          averageScore: score ? score : undefined // TODO: Calculate proper average
+          conversationsCount: { increment: 1 },
+          averageScore: newAverageScore || undefined
         },
         create: {
           userId,
@@ -392,13 +411,13 @@ export class LearningService {
           lessonsCompleted: 1,
           minutesPracticed: lesson.estimatedDuration,
           averageScore: score || null,
-          conversationsCount: 0,
+          conversationsCount: 1,
           strengths: [],
           weaknesses: []
         }
       });
       
-      logger.info('Updated learning analytics', { userId, lessonId });
+      logger.info('Updated learning analytics', { userId, lessonId, score: newAverageScore });
     } catch (error) {
       logger.error('Error updating learning analytics', { userId, lessonId, error: (error as Error).message });
     }

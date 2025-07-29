@@ -13,7 +13,24 @@ export class LearningController {
   // Learning Paths endpoints
   getLearningPaths = async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const userId = (req as any).userId; // From auth middleware
       const paths = await this.learningService.getAllLearningPaths();
+      
+      // If user is authenticated, include their progress for all lessons
+      if (userId) {
+        const userProgress = await this.learningService.getUserProgress(userId);
+        
+        // Add progress to each lesson in each path
+        paths.forEach(path => {
+          path.lessons = path.lessons.map(lesson => {
+            const progress = userProgress.find(p => p.lessonId === lesson.id);
+            return {
+              ...lesson,
+              userProgress: progress || null
+            };
+          });
+        });
+      }
       
       res.json({
         success: true,
@@ -29,12 +46,39 @@ export class LearningController {
   getLearningPathById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { pathId } = req.params;
+      const userId = (req as any).userId; // From auth middleware
+      
+      logger.info('Getting learning path', { pathId, userId: userId || 'anonymous' });
       
       if (!pathId) {
         throw createError('Path ID is required', 400);
       }
       
       const path = await this.learningService.getLearningPathById(pathId);
+      
+      // If user is authenticated, include their progress for all lessons
+      if (userId) {
+        logger.info('Adding user progress to path', { pathId, userId });
+        const userProgress = await this.learningService.getUserProgressByPath(userId, pathId);
+        
+        // Merge lessons with user progress
+        path.lessons = path.lessons.map(lesson => {
+          const progress = userProgress.find(p => p.lessonId === lesson.id);
+          return {
+            ...lesson,
+            userProgress: progress || null
+          };
+        });
+        
+        logger.info('User progress added', { 
+          pathId, 
+          userId, 
+          progressCount: userProgress.length,
+          lessonsWithProgress: path.lessons.filter(l => l.userProgress).length
+        });
+      } else {
+        logger.info('No user ID - returning path without progress', { pathId });
+      }
       
       res.json({
         success: true,
@@ -43,11 +87,14 @@ export class LearningController {
       });
     } catch (error) {
       if ((error as Error).message === 'Learning path not found') {
+        logger.error('Learning path not found', { pathId: req.params.pathId });
         next(createError('Learning path not found', 404));
       } else {
         logger.error('Error getting learning path', { 
           pathId: req.params.pathId, 
-          error: (error as Error).message 
+          userId: (req as any).userId,
+          error: (error as Error).message,
+          stack: (error as Error).stack
         });
         next(createError('Failed to retrieve learning path', 500));
       }

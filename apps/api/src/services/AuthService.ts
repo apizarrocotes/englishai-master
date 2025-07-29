@@ -49,6 +49,14 @@ export class AuthService {
   }
 
   async generateTokens(userId: string): Promise<{ accessToken: string; refreshToken: string; expiresAt: Date }> {
+    logger.info('AuthService - generating tokens', {
+      userId,
+      jwtSecretLength: this.jwtSecret.length,
+      jwtSecretPreview: `${this.jwtSecret.substring(0, 10)}...`,
+      jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+      env: process.env.NODE_ENV
+    });
+
     const payload = { userId, type: 'access' };
     const refreshPayload = { userId, type: 'refresh' };
 
@@ -63,14 +71,47 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
+    logger.info('AuthService - tokens generated successfully', {
+      userId,
+      accessTokenLength: accessToken.length,
+      accessTokenPreview: `${accessToken.substring(0, 20)}...${accessToken.substring(accessToken.length - 10)}`,
+      refreshTokenLength: refreshToken.length,
+      expiresAt: expiresAt.toISOString()
+    });
+
     return { accessToken, refreshToken, expiresAt };
   }
 
   async verifyToken(token: string): Promise<string> {
     try {
+      logger.info('AuthService - verifying token', {
+        tokenLength: token.length,
+        tokenPreview: `${token.substring(0, 15)}...${token.substring(token.length - 5)}`,
+        jwtSecretLength: this.jwtSecret.length,
+        jwtSecretPreview: `${this.jwtSecret.substring(0, 10)}...`,
+        env: process.env.NODE_ENV
+      });
+
       const decoded = jwt.verify(token, this.jwtSecret) as any;
+      
+      logger.info('AuthService - token verified successfully', {
+        userId: decoded.userId,
+        tokenType: decoded.type,
+        issuedAt: decoded.iat ? new Date(decoded.iat * 1000).toISOString() : 'unknown',
+        expiresAt: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'unknown'
+      });
+      
       return decoded.userId;
     } catch (error) {
+      logger.error('AuthService - token verification failed', {
+        error: (error as Error).message,
+        tokenLength: token.length,
+        tokenPreview: token ? `${token.substring(0, 20)}...` : 'empty',
+        jwtSecretLength: this.jwtSecret.length,
+        errorName: (error as Error).name,
+        stack: process.env.NODE_ENV === 'development' ? (error as Error).stack : undefined
+      });
+      
       throw createError('Invalid or expired token', 401);
     }
   }

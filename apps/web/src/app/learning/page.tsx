@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, BookOpen, Clock, Target, Users, Star } from 'lucide-react';
+import { ArrowLeft, BookOpen, Clock, Target, Users, Star, Mic } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
+import { TokenStorage } from '@/lib/auth';
 
 interface LearningPath {
   id: string;
@@ -21,6 +22,12 @@ interface LearningPath {
     orderIndex: number;
     difficultyLevel: number;
     estimatedDuration: number;
+    userProgress?: {
+      status: string;
+      score: number | null;
+      timeSpent: number;
+      completedAt: string | null;
+    } | null;
   }[];
 }
 
@@ -52,7 +59,11 @@ export default function LearningPage() {
   const fetchLearningPaths = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('accessToken');
+      const token = TokenStorage.getAccessToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
       
       const response = await fetch('/api/learning/paths', {
         headers: {
@@ -66,6 +77,16 @@ export default function LearningPage() {
       }
 
       const data = await response.json();
+      
+      // Debug logging
+      console.log('🔍 Learning paths received:', data.data);
+      if (data.data.length > 0) {
+        console.log('🔍 First path lessons:', data.data[0].lessons);
+        if (data.data[0].lessons.length > 0) {
+          console.log('🔍 First lesson progress:', data.data[0].lessons[0].userProgress);
+        }
+      }
+      
       setLearningPaths(data.data);
     } catch (error) {
       console.error('Error fetching learning paths:', error);
@@ -97,6 +118,29 @@ export default function LearningPage() {
       'pronunciation': 'text-pink-600 bg-pink-50',
     };
     return colors[category as keyof typeof colors] || 'text-gray-600 bg-gray-50';
+  };
+
+  const calculatePathProgress = (path: LearningPath) => {
+    const completedLessons = path.lessons.filter(lesson => 
+      lesson.userProgress?.status === 'completed'
+    ).length;
+    
+    const totalLessons = path.lessons.length; // Use actual lessons, not the totalLessons field
+    const progressPercentage = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+    
+    // Debug logging
+    console.log(`📊 Progress for ${path.name}:`, {
+      completed: completedLessons,
+      total: totalLessons,
+      percentage: progressPercentage,
+      lessons: path.lessons.map(l => ({ title: l.title, status: l.userProgress?.status || 'not_started' }))
+    });
+    
+    return {
+      completed: completedLessons,
+      total: totalLessons,
+      percentage: progressPercentage
+    };
   };
 
   if (!isAuthenticated || !user) {
@@ -163,11 +207,41 @@ export default function LearningPage() {
           </div>
         </motion.div>
 
-        {/* Category Filter */}
+        {/* Voice Demo Banner */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
+          className="mb-8"
+        >
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-6 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-white/20 rounded-lg">
+                    <Mic className="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold mb-1">Try Voice Conversation!</h3>
+                    <p className="text-blue-100">Practice speaking English with AI in real-time</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => router.push('/learning/voice-demo')}
+                  className="px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors"
+                >
+                  Start Demo
+                </button>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Category Filter */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
           className="mb-8"
         >
           <div className="flex flex-wrap gap-3">
@@ -257,13 +331,26 @@ export default function LearningPage() {
 
                 {/* Progress Preview */}
                 <div className="mb-4">
-                  <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                    <span>Progress</span>
-                    <span>0%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: '0%' }}></div>
-                  </div>
+                  {(() => {
+                    const progress = calculatePathProgress(path);
+                    return (
+                      <>
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                          <span>Progress</span>
+                          <span>{progress.percentage}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all" 
+                            style={{ width: `${progress.percentage}%` }}
+                          ></div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          {progress.completed} of {progress.total} lessons completed
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {/* Action Button */}

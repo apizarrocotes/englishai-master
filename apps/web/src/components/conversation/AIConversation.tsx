@@ -19,6 +19,7 @@ import {
 import { useSocket } from '@/hooks/useSocket';
 import { useUser } from '@/stores/authStore';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { TokenStorage } from '@/lib/auth';
 
 interface Message {
   id: string;
@@ -152,13 +153,20 @@ export default function AIConversation({ lessonId, onClose, onComplete }: AIConv
   };
 
   const startConversation = async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      console.error('AIConversation: No user ID available');
+      return;
+    }
 
+    console.log('AIConversation: Starting conversation for lesson:', lessonId);
     setIsStarting(true);
     setError(null);
 
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = TokenStorage.getAccessToken();
+      console.log('AIConversation: Using token:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+      
+      console.log('AIConversation: Making request to /api/conversations/start');
       const response = await fetch('/api/conversations/start', {
         method: 'POST',
         headers: {
@@ -168,11 +176,17 @@ export default function AIConversation({ lessonId, onClose, onComplete }: AIConv
         body: JSON.stringify({ lessonId }),
       });
 
+      console.log('AIConversation: Response status:', response.status);
+      console.log('AIConversation: Response headers:', Object.fromEntries(response.headers.entries()));
+
       if (!response.ok) {
-        throw new Error('Failed to start conversation');
+        const errorText = await response.text();
+        console.error('AIConversation: API error response:', errorText);
+        throw new Error(`Failed to start conversation: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('AIConversation: Successfully received response:', data);
       const sessionData = data.data.session;
       
       setSession(sessionData);
@@ -193,8 +207,15 @@ export default function AIConversation({ lessonId, onClose, onComplete }: AIConv
       socket.joinConversation(sessionData.id, user.id);
 
     } catch (error) {
-      console.error('Error starting conversation:', error);
-      setError('Failed to start conversation. Please try again.');
+      console.error('AIConversation: Error starting conversation:', error);
+      console.error('AIConversation: Error details:', {
+        message: (error as Error).message,
+        stack: (error as Error).stack,
+        lessonId,
+        userId: user?.id,
+        hasToken: !!TokenStorage.getAccessToken()
+      });
+      setError(`Failed to start conversation: ${(error as Error).message}`);
     } finally {
       setIsStarting(false);
       setIsLoading(false);
