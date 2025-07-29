@@ -19,9 +19,9 @@ dotenv.config();
 
 const allowedOrigins = [
   'http://localhost:3000',
-  'http://193.70.3.183:3000',
+  'http://89.58.17.78:3000',
   process.env.FRONTEND_URL
-].filter(Boolean);
+].filter(Boolean) as string[];
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,7 +33,7 @@ const io = new Server(httpServer, {
   },
 });
 
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT || '3001', 10);
 
 // Security middleware
 app.use(helmet());

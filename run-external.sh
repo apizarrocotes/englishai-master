@@ -7,7 +7,7 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-IP="193.70.3.183"
+IP="89.58.17.78"
 
 echo -e "${BLUE}🌐 EnglishAI Master - External Access Setup${NC}"
 echo -e "Public IP: ${YELLOW}$IP${NC}"
