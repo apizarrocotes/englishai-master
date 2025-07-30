@@ -47,5 +47,5 @@ app.get('/api/learning/paths', (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`✅ EnglishAI API Server running on http://0.0.0.0:${PORT}`);
   console.log(`   - Health check: http://0.0.0.0:${PORT}/health`);
-  console.log(`   - Frontend URL: http://193.70.3.183:3000`);
+  console.log(`   - Frontend URL: http://89.58.17.78:3000`);
 });

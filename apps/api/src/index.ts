@@ -11,14 +11,14 @@ import { errorHandler } from '@/middleware/errorHandler';
 import { logger } from '@/utils/logger';
 import { authRoutes } from '@/routes/auth';
 import { userRoutes } from '@/routes/users';
-// import { conversationRoutes } from '@/routes/conversations';
+import { conversationRoutes } from '@/routes/conversations';
 import { learningRoutes } from '@/routes/learning';
 import { analyticsRoutes } from '@/routes/analytics';
 // import { voiceRoutes } from '@/routes/voice';
 // import { setupSocketHandlers } from '@/services/socket';
 // import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
-dotenv.config();
+dotenv.config({ path: '../../.env' });
 
 // Get allowed origins from environment variables
 const getDefaultOrigins = () => {
@@ -144,7 +144,7 @@ app.get('/api/learning/paths-direct', async (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-// app.use('/api/conversations', conversationRoutes);
+app.use('/api/conversations', conversationRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
 // app.use('/api/voice', voiceRoutes);
