@@ -249,7 +249,7 @@ export class VoiceService {
       }
 
       const mp3 = await this.openai.audio.speech.create({
-        model: 'tts-1',
+        model: 'tts-1-hd',
         voice: voice as any,
         input: text,
         speed: speed,

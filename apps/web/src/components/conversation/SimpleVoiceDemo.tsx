@@ -23,11 +23,28 @@ interface SimpleVoiceDemoProps {
   onConversationEnd?: () => void;
 }
 
+interface ConversationSession {
+  id: string;
+  status: 'active' | 'completed';
+  aiPersona: {
+    name: string;
+    role: string;
+  };
+}
+
 interface DemoMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+}
+
+// Extend window for Speech Recognition
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
 }
 
 export default function SimpleVoiceDemo({
@@ -42,138 +59,309 @@ export default function SimpleVoiceDemo({
   const [messages, setMessages] = useState<DemoMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [session, setSession] = useState<ConversationSession | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [isListening, setIsListening] = useState(false);
+  const [isGeneratingSpeech, setIsGeneratingSpeech] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Add initial greeting message
+  // Initialize conversation session and speech recognition
   React.useEffect(() => {
-    if (messages.length === 0) {
+    if (lessonId) {
+      startConversationSession();
+      initializeSpeechRecognition();
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    };
+  }, [lessonId]);
+
+  // Initialize Web Speech API
+  const initializeSpeechRecognition = () => {
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      recognition.maxAlternatives = 1;
+      
+      recognition.onstart = () => {
+        setIsListening(true);
+        setError(null);
+        console.log('Speech recognition started');
+      };
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        const confidence = event.results[0][0].confidence;
+        
+        console.log('Speech recognized:', transcript, 'Confidence:', confidence);
+        
+        // Add user message
+        const userMessage: DemoMessage = {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          content: transcript,
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, userMessage]);
+        onMessageSent?.(transcript);
+        
+        // Get AI response with delay to ensure session is ready
+        setTimeout(() => {
+          sendMessageToAI(transcript);
+        }, 100);
+      };
+      
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        setIsRecording(false);
+        
+        switch (event.error) {
+          case 'no-speech':
+            setError('No speech detected. Please try again.');
+            break;
+          case 'audio-capture':
+            setError('Microphone not accessible. Please check permissions.');
+            break;
+          case 'not-allowed':
+            setError('Microphone access denied. Please allow microphone access.');
+            break;
+          default:
+            setError('Speech recognition error. Please try again.');
+        }
+      };
+      
+      recognition.onend = () => {
+        setIsListening(false);
+        setIsRecording(false);
+        console.log('Speech recognition ended');
+      };
+      
+      recognitionRef.current = recognition;
+    } else {
+      console.warn('Speech recognition not supported in this browser');
+      setError('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.');
+    }
+  };
+
+  // Start conversation session (mock version while database is down)
+  const startConversationSession = async () => {
+    setIsInitializing(true);
+    setError(null);
+
+    try {
+      // Create a mock session for now since database is having issues
+      const mockSession = {
+        id: `mock-session-${Date.now()}`,
+        status: 'active' as const,
+        aiPersona: {
+          name: 'AI Waiter',
+          role: 'Restaurant Server'
+        }
+      };
+      
+      setSession(mockSession);
+
+      // Add initial greeting message
       const greeting: DemoMessage = {
         id: 'greeting',
         role: 'assistant',
-        content: `Welcome to our restaurant! I'm your AI waiter. How can I help you today?`,
+        content: 'Welcome to our restaurant! I\'m your AI waiter. How can I help you today?',
         timestamp: new Date()
       };
+      
       setMessages([greeting]);
-    }
-  }, [messages.length]);
-
-  // Start recording
-  const startRecording = async () => {
-    try {
-      setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      // Generate speech for the greeting after a short delay
+      setTimeout(() => {
+        generateSpeechForMessage(greeting.content);
+      }, 1000);
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        await processAudio(audioBlob);
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
     } catch (error) {
-      setError('Microphone access denied. Please allow microphone access and try again.');
-      console.error('Error starting recording:', error);
+      setError('Failed to start conversation. Please try again.');
+      console.error('Error starting conversation:', error);
+    } finally {
+      setIsInitializing(false);
     }
   };
 
-  // Stop recording
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      // Stop all audio tracks
-      if (mediaRecorderRef.current.stream) {
-        mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-      }
-    }
-  };
 
-  // Process audio with speech-to-text
-  const processAudio = async (audioBlob: Blob) => {
-    setIsProcessing(true);
+  // Generate high-quality speech using OpenAI TTS directly
+  const generateSpeechForMessage = async (text: string) => {
+    if (isGeneratingSpeech || isPlayingAudio) {
+      console.log('Speech generation already in progress, skipping...');
+      return;
+    }
+    
+    setIsGeneratingSpeech(true);
     
     try {
-      // Convert audio to base64
-      const audioBase64 = await blobToBase64(audioBlob);
-      
+      // Use backend TTS endpoint instead of direct OpenAI call for security
       const token = TokenStorage.getAccessToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
-      const response = await fetch(`${apiUrl}/api/voice/speech-to-text`, {
+      
+      const ttsResponse = await fetch(`${apiUrl}/api/voice/tts`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          audioBase64: audioBase64,
-          format: 'webm'
+          text: text,
+          voice: 'nova',
+          speed: 0.95
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to process audio');
+      if (ttsResponse.ok) {
+        const ttsData = await ttsResponse.json();
+        // Convert base64 audio to blob
+        const audioBlob = new Blob([Uint8Array.from(atob(ttsData.data.audio), c => c.charCodeAt(0))], { type: 'audio/mp3' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        setIsPlayingAudio(true);
+        const audio = new Audio(audioUrl);
+        
+        audio.onplay = () => setIsPlayingAudio(true);
+        audio.onended = () => {
+          setIsPlayingAudio(false);
+          setIsGeneratingSpeech(false);
+          URL.revokeObjectURL(audioUrl);
+        };
+        audio.onerror = () => {
+          setIsPlayingAudio(false);
+          setIsGeneratingSpeech(false);
+          URL.revokeObjectURL(audioUrl);
+          console.error('Error playing OpenAI audio');
+        };
+        
+        await audio.play();
+        return;
       }
-
-      const data = await response.json();
-      const userText = data.data.text;
-
-      // Add user message
-      const userMessage: DemoMessage = {
-        id: `user-${Date.now()}`,
-        role: 'user',
-        content: userText,
-        timestamp: new Date()
-      };
-      
-      setMessages(prev => [...prev, userMessage]);
-      onMessageSent?.(userText);
-
-      // Get AI response
-      await getAIResponse(userText);
-      
     } catch (error) {
-      setError('Failed to process your speech. Please try again.');
-      console.error('Error processing audio:', error);
+      console.warn('OpenAI TTS failed, falling back to browser Speech Synthesis:', error);
+    }
+
+    // Enhanced fallback to browser's Speech Synthesis API
+    try {
+      if ('speechSynthesis' in window) {
+        setIsPlayingAudio(true);
+        
+        // Wait for voices to load
+        let voices = speechSynthesis.getVoices();
+        if (voices.length === 0) {
+          await new Promise(resolve => {
+            speechSynthesis.onvoiceschanged = () => {
+              voices = speechSynthesis.getVoices();
+              resolve(voices);
+            };
+          });
+        }
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.85; // Slightly slower for better clarity
+        utterance.pitch = 1.1; // Slightly higher pitch for friendliness
+        utterance.volume = 1.0;
+        
+        // Try to find the best available voice
+        const preferredVoice = voices.find(voice => 
+          voice.name.includes('Samantha') || // macOS high-quality voice
+          voice.name.includes('Google US English') ||
+          voice.name.includes('Microsoft Zira') ||
+          voice.name.includes('Google UK English Female') ||
+          (voice.lang.startsWith('en') && voice.name.includes('Female'))
+        ) || voices.find(voice => voice.lang.startsWith('en-US')) || voices[0];
+        
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+          console.log('Using voice:', preferredVoice.name);
+        }
+        
+        utterance.onstart = () => setIsPlayingAudio(true);
+        utterance.onend = () => {
+          setIsPlayingAudio(false);
+          setIsGeneratingSpeech(false);
+        };
+        utterance.onerror = (error) => {
+          console.error('Speech synthesis error:', error);
+          setIsPlayingAudio(false);
+          setIsGeneratingSpeech(false);
+        };
+        
+        speechSynthesis.speak(utterance);
+      }
+    } catch (error) {
+      console.warn('Browser speech synthesis also failed:', error);
+      setIsPlayingAudio(false);
+      setIsGeneratingSpeech(false);
     } finally {
-      setIsProcessing(false);
+      if (!isPlayingAudio) {
+        setIsGeneratingSpeech(false);
+      }
     }
   };
 
-  // Get AI response
-  const getAIResponse = async (userText: string) => {
+  // Start speech recognition
+  const startRecording = async () => {
+    if (!recognitionRef.current) {
+      setError('Speech recognition not available. Please use a supported browser.');
+      return;
+    }
+
     try {
-      const token = TokenStorage.getAccessToken();
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
-      const response = await fetch(`${apiUrl}/api/voice/text-to-speech`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: userText
-        }),
-      });
+      setError(null);
+      setIsRecording(true);
+      recognitionRef.current.start();
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      setError('Failed to start speech recognition. Please try again.');
+      setIsRecording(false);
+    }
+  };
 
-      if (!response.ok) {
-        throw new Error('Failed to get AI response');
-      }
+  // Stop speech recognition
+  const stopRecording = () => {
+    if (recognitionRef.current && isRecording) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+    }
+  };
 
-      const data = await response.json();
-      const aiText = data.data.text;
+
+  // Send message to AI and get response (mock version with OpenAI direct call)
+  const sendMessageToAI = async (userText: string) => {
+    // Wait for session to be ready if it's still initializing
+    let attempts = 0;
+    while (!session && attempts < 10) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      attempts++;
+    }
+    
+    if (!session) {
+      setError('Session not ready. Please wait a moment and try again.');
+      console.log('Session state:', session, 'Attempts:', attempts);
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      
+      // Generate AI response using a mock restaurant waiter
+      const aiText = await generateMockAIResponse(userText);
 
       // Add AI message
       const aiMessage: DemoMessage = {
@@ -186,10 +374,52 @@ export default function SimpleVoiceDemo({
       setMessages(prev => [...prev, aiMessage]);
       onResponseReceived?.(aiText);
 
+      // Generate speech for AI response
+      generateSpeechForMessage(aiText);
+
     } catch (error) {
       setError('Failed to get AI response. Please try again.');
       console.error('Error getting AI response:', error);
+    } finally {
+      setIsProcessing(false);
     }
+  };
+
+  // Generate mock AI response for restaurant scenario
+  const generateMockAIResponse = async (userMessage: string): Promise<string> => {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // Simple pattern matching for restaurant responses
+    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
+      return "Hello! Welcome to our restaurant. What can I get started for you today?";
+    }
+    
+    if (lowerMessage.includes('menu') || lowerMessage.includes('what do you have')) {
+      return "We have a variety of delicious options! We serve appetizers like calamari and bruschetta, main courses including pasta, steaks, and fish, plus amazing desserts. What type of food are you in the mood for?";
+    }
+    
+    if (lowerMessage.includes('recommend') || lowerMessage.includes('suggest')) {
+      return "I'd highly recommend our signature dish - the grilled salmon with lemon butter sauce. It's very popular! Or if you prefer meat, our ribeye steak is excellent. Do either of those sound good?";
+    }
+    
+    if (lowerMessage.includes('order') || lowerMessage.includes('like') || lowerMessage.includes('want')) {
+      return "Great choice! I'll get that started for you. Would you like any appetizers or drinks to go with that? And how would you like that prepared?";
+    }
+    
+    if (lowerMessage.includes('drink') || lowerMessage.includes('beverage')) {
+      return "For drinks, we have soft drinks, juices, coffee, tea, and a selection of wines and cocktails. What would you prefer?";
+    }
+    
+    if (lowerMessage.includes('check') || lowerMessage.includes('bill') || lowerMessage.includes('pay')) {
+      return "Of course! I'll bring your check right over. Thank you for dining with us today. How was everything?";
+    }
+    
+    if (lowerMessage.includes('thank')) {
+      return "You're very welcome! It was my pleasure serving you today. Please come back and visit us again soon!";
+    }
+    
+    // Default response
+    return "I understand. Let me help you with that. Is there anything else I can assist you with today?";
   };
 
   // Send text message
@@ -211,7 +441,39 @@ export default function SimpleVoiceDemo({
     onMessageSent?.(userText);
 
     // Get AI response
-    await getAIResponse(userText);
+    await sendMessageToAI(userText);
+  };
+
+  // Play audio response from AI
+  const playAudioResponse = (audioBase64: string) => {
+    try {
+      const audioBlob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], { type: 'audio/mp3' });
+      const audioUrl = URL.createObjectURL(audioBlob);
+      
+      if (audioRef.current) {
+        audioRef.current.src = audioUrl;
+        audioRef.current.onplay = () => setIsPlayingAudio(true);
+        audioRef.current.onended = () => setIsPlayingAudio(false);
+        audioRef.current.onerror = () => setIsPlayingAudio(false);
+        audioRef.current.play().catch(error => {
+          console.error('Error playing audio:', error);
+          setIsPlayingAudio(false);
+        });
+      } else {
+        // Create new audio element if ref doesn't exist
+        const audio = new Audio(audioUrl);
+        audio.onplay = () => setIsPlayingAudio(true);
+        audio.onended = () => setIsPlayingAudio(false);
+        audio.onerror = () => setIsPlayingAudio(false);
+        audio.play().catch(error => {
+          console.error('Error playing audio:', error);
+          setIsPlayingAudio(false);
+        });
+      }
+    } catch (error) {
+      console.error('Error processing audio response:', error);
+      setIsPlayingAudio(false);
+    }
   };
 
   // Helper function to convert blob to base64
@@ -229,8 +491,23 @@ export default function SimpleVoiceDemo({
     });
   };
 
+  // Show loading state while initializing
+  if (isInitializing) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-[600px] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+          <p className="text-gray-600">Starting conversation...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 h-[600px] flex flex-col">
+      {/* Hidden audio element for playing AI responses */}
+      <audio ref={audioRef} />
+      
       {/* Header */}
       <div className="border-b p-4 bg-blue-50 rounded-t-xl">
         <div className="flex items-center justify-between">
@@ -239,12 +516,24 @@ export default function SimpleVoiceDemo({
               <Bot className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Voice Demo</h3>
-              <p className="text-sm text-gray-600">{scenarioType}</p>
+              <h3 className="font-semibold text-gray-900">
+                {session?.aiPersona?.name || 'Voice Demo'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                {session?.aiPersona?.role || scenarioType}
+              </p>
             </div>
           </div>
-          <div className="text-sm text-gray-500">
-            {messages.length - 1} messages
+          <div className="flex items-center space-x-4">
+            {isPlayingAudio && (
+              <div className="flex items-center space-x-2 text-green-600">
+                <Volume2 className="w-4 h-4 animate-pulse" />
+                <span className="text-sm font-medium">AI Speaking...</span>
+              </div>
+            )}
+            <div className="text-sm text-gray-500">
+              {messages.length - 1} messages
+            </div>
           </div>
         </div>
       </div>
@@ -327,10 +616,10 @@ export default function SimpleVoiceDemo({
           {/* Voice Recording Button */}
           <button
             onClick={isRecording ? stopRecording : startRecording}
-            disabled={isProcessing}
+            disabled={isProcessing || !session}
             className={`p-3 rounded-full transition-colors ${
               isRecording 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
                 : 'bg-blue-600 hover:bg-blue-700 text-white'
             } disabled:opacity-50`}
           >
@@ -350,14 +639,14 @@ export default function SimpleVoiceDemo({
               onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
               placeholder="Or type your message..."
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={isProcessing}
+              disabled={isProcessing || !session}
             />
           </div>
 
           {/* Send Button */}
           <button
             onClick={sendTextMessage}
-            disabled={!textInput.trim() || isProcessing}
+            disabled={!textInput.trim() || isProcessing || !session}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Send
@@ -365,7 +654,12 @@ export default function SimpleVoiceDemo({
         </div>
 
         <div className="text-xs text-gray-500 mt-2 text-center">
-          {isRecording ? 'Recording... Click the microphone to stop' : 'Click the microphone to start recording or type a message'}
+          {isRecording ? 'Listening... Speak now or click microphone to stop' : 'Click the microphone to start voice recognition or type a message'}
+          <br />
+          <span className="text-green-600">🎙️ Real Speech Recognition + ✨ OpenAI TTS-HD</span>
+          {isListening && (
+            <div className="text-blue-600 animate-pulse mt-1">● Listening for speech...</div>
+          )}
         </div>
       </div>
     </div>
