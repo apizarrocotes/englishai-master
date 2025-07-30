@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { VoiceService } from '@/services/VoiceService';
 import { authenticateToken } from '@/middleware/auth';
 import { logger } from '@/utils/logger';
+import { WebSocket } from 'ws';
 
 const router = Router();
 const voiceService = new VoiceService();
@@ -117,7 +118,7 @@ router.post('/stt', authenticateToken, async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        text: result.text,
+        text: result.transcription,
         confidence: result.confidence
       }
     });

@@ -72,9 +72,13 @@ export default function SimpleVoiceDemo({
 
   // Initialize conversation session and speech recognition
   React.useEffect(() => {
+    console.log('useEffect triggered with lessonId:', lessonId);
     if (lessonId) {
+      console.log('Starting initialization...');
       startConversationSession();
       initializeSpeechRecognition();
+    } else {
+      console.warn('No lessonId provided, skipping initialization');
     }
     
     // Cleanup on unmount
@@ -107,6 +111,7 @@ export default function SimpleVoiceDemo({
         const confidence = event.results[0][0].confidence;
         
         console.log('Speech recognized:', transcript, 'Confidence:', confidence);
+        console.log('About to add user message and call sendMessageToAI');
         
         // Add user message
         const userMessage: DemoMessage = {
@@ -119,10 +124,9 @@ export default function SimpleVoiceDemo({
         setMessages(prev => [...prev, userMessage]);
         onMessageSent?.(transcript);
         
-        // Get AI response with delay to ensure session is ready
-        setTimeout(() => {
-          sendMessageToAI(transcript);
-        }, 100);
+        // Get AI response immediately - no delay needed with new logic
+        console.log('Calling sendMessageToAI with transcript:', transcript);
+        sendMessageToAI(transcript);
       };
       
       recognition.onerror = (event: any) => {
@@ -160,11 +164,14 @@ export default function SimpleVoiceDemo({
 
   // Start conversation session (mock version while database is down)
   const startConversationSession = async () => {
+    console.log('Starting conversation session...');
     setIsInitializing(true);
     setError(null);
 
     try {
-      // Create a mock session for now since database is having issues
+      console.log('About to create mock session...');
+      
+      // Create a mock session immediately
       const mockSession = {
         id: `mock-session-${Date.now()}`,
         status: 'active' as const,
@@ -174,7 +181,10 @@ export default function SimpleVoiceDemo({
         }
       };
       
+      console.log('Mock session created:', mockSession);
+      console.log('Setting session state...');
       setSession(mockSession);
+      console.log('Session state set');
 
       // Add initial greeting message
       const greeting: DemoMessage = {
@@ -184,17 +194,23 @@ export default function SimpleVoiceDemo({
         timestamp: new Date()
       };
       
+      console.log('Setting initial messages...');
       setMessages([greeting]);
+      console.log('Messages set');
+      
+      console.log('Session initialization complete - setting isInitializing to false');
+      setIsInitializing(false);
       
       // Generate speech for the greeting after a short delay
       setTimeout(() => {
+        console.log('About to generate speech for greeting');
         generateSpeechForMessage(greeting.content);
-      }, 1000);
+      }, 500);
 
     } catch (error) {
+      console.error('Error in startConversationSession:', error);
       setError('Failed to start conversation. Please try again.');
-      console.error('Error starting conversation:', error);
-    } finally {
+      setSession(null);
       setIsInitializing(false);
     }
   };
@@ -344,18 +360,33 @@ export default function SimpleVoiceDemo({
 
   // Send message to AI and get response (mock version with OpenAI direct call)
   const sendMessageToAI = async (userText: string) => {
-    // Wait for session to be ready if it's still initializing
-    let attempts = 0;
-    while (!session && attempts < 10) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      attempts++;
+    console.log('sendMessageToAI called with:', userText);
+    console.log('Current session:', session);
+    console.log('isInitializing:', isInitializing);
+    
+    // If no session exists, create one immediately
+    if (!session) {
+      console.log('No session found, creating emergency session...');
+      const emergencySession = {
+        id: `emergency-session-${Date.now()}`,
+        status: 'active' as const,
+        aiPersona: {
+          name: 'AI Waiter',
+          role: 'Restaurant Server'
+        }
+      };
+      setSession(emergencySession);
+      console.log('Emergency session created:', emergencySession);
     }
     
-    if (!session) {
-      setError('Session not ready. Please wait a moment and try again.');
-      console.log('Session state:', session, 'Attempts:', attempts);
-      return;
-    }
+    // Use current session or emergency session
+    const currentSession = session || {
+      id: `fallback-session-${Date.now()}`,
+      status: 'active' as const,
+      aiPersona: { name: 'AI Waiter', role: 'Restaurant Server' }
+    };
+    
+    console.log('Using session:', currentSession.id);
 
     try {
       setIsProcessing(true);
