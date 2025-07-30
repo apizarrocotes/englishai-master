@@ -65,12 +65,28 @@ export default function LearningPage() {
         throw new Error('No authentication token found');
       }
       
-      const response = await fetch('http://89.58.17.78:3001/api/learning/paths-direct', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      // Try direct endpoint first (no auth) for faster response
+      let response;
+      try {
+        console.log('🔄 Trying direct endpoint first...');
+        response = await fetch(`${apiUrl}/api/learning/paths-direct`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+      } catch (error) {
+        console.log('⚠️ Direct endpoint failed, trying auth endpoint...', error);
+        // Fallback to auth endpoint
+        response = await fetch(`${apiUrl}/api/learning/paths`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
+      }
 
       if (!response.ok) {
         throw new Error('Failed to fetch learning paths');

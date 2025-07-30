@@ -30,6 +30,46 @@ router.get('/learning-paths-v2', async (req, res) => {
 
 // Learning Paths routes
 router.get('/paths', authenticateToken, learningController.getLearningPaths);
+
+// Direct paths endpoint without auth for debugging
+router.get('/paths-direct', async (req, res) => {
+  try {
+    const { LearningService } = require('@/services/LearningService');
+    const learningService = new LearningService();
+    const paths = await learningService.getAllLearningPaths();
+    res.json({
+      success: true,
+      data: paths,
+      message: 'Learning paths retrieved successfully from direct endpoint'
+    });
+  } catch (error) {
+    console.error('Direct paths error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Direct single path endpoint without auth for debugging
+router.get('/paths-direct/:pathId', async (req, res) => {
+  try {
+    const { pathId } = req.params;
+    const { LearningService } = require('@/services/LearningService');
+    const learningService = new LearningService();
+    const path = await learningService.getLearningPathById(pathId);
+    res.json({
+      success: true,
+      data: path,
+      message: 'Learning path retrieved successfully from direct endpoint'
+    });
+  } catch (error) {
+    console.error('Direct path error:', error);
+    if ((error as Error).message === 'Learning path not found') {
+      res.status(404).json({ error: 'Learning path not found' });
+    } else {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  }
+});
+
 router.get('/paths/:pathId', 
   optionalAuth,
   param('pathId').isString().notEmpty().withMessage('Path ID is required'),
@@ -54,6 +94,29 @@ router.get('/paths/:pathId/lessons',
   validateRequest,
   learningController.getLessonsByPath
 );
+
+// Direct lesson endpoint without auth for debugging
+router.get('/lessons-direct/:lessonId', async (req, res) => {
+  try {
+    const { lessonId } = req.params;
+    const { LearningService } = require('@/services/LearningService');
+    const learningService = new LearningService();
+    const lesson = await learningService.getLessonById(lessonId);
+    res.json({
+      success: true,
+      data: lesson,
+      message: 'Lesson retrieved successfully from direct endpoint'
+    });
+  } catch (error) {
+    console.error('Direct lesson error:', error);
+    if ((error as Error).message === 'Lesson not found') {
+      res.status(404).json({ error: 'Lesson not found' });
+    } else {
+      res.status(500).json({ error: (error as Error).message });
+    }
+  }
+});
+
 router.get('/lessons/:lessonId', 
   optionalAuth,
   param('lessonId').isString().notEmpty().withMessage('Lesson ID is required'),

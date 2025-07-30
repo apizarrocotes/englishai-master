@@ -7,10 +7,12 @@ const getApiUrl = () => {
   // If running in browser, try to detect the correct URL
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       return 'http://localhost:3001';
     } else {
-      return `http://${hostname}:3001`;
+      // Use same protocol as the current page (should be HTTPS for remote access)
+      return `${protocol}//${hostname}:3001`;
     }
   }
   

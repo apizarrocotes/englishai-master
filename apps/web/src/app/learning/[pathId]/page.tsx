@@ -87,12 +87,29 @@ export default function LearningPathPage() {
       
       console.log('🔍 Fetching learning path:', pathId, 'with token:', token ? 'present' : 'missing');
       
-      const response = await fetch(`http://89.58.17.78:3001/api/learning/paths/${pathId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      // Try direct endpoint first (no auth) for faster response
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      
+      let response;
+      try {
+        console.log('🔄 Trying direct endpoint first...');
+        response = await fetch(`${apiUrl}/api/learning/paths-direct/${pathId}`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+      } catch (error) {
+        console.log('⚠️ Direct endpoint failed, trying auth endpoint...', error);
+        // Fallback to auth endpoint
+        response = await fetch(`${apiUrl}/api/learning/paths/${pathId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

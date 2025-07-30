@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
+import { readFileSync } from 'fs';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 // import expressWs from 'express-ws';
@@ -15,10 +17,29 @@ import { conversationRoutes } from '@/routes/conversations';
 import { learningRoutes } from '@/routes/learning';
 import { analyticsRoutes } from '@/routes/analytics';
 // import { voiceRoutes } from '@/routes/voice';
+import { voiceSimpleRoutes } from '@/routes/voice-simple';
 // import { setupSocketHandlers } from '@/services/socket';
 // import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
-dotenv.config({ path: '../../.env' });
+// Try multiple paths for .env file
+import path from 'path';
+
+const envPaths = [
+  path.join(__dirname, '../../../.env'), // From src/ to root
+  path.join(__dirname, '../.env'),       // From src/ to apps/api/
+  path.join(process.cwd(), '.env'),      // Current working directory
+  path.join(process.cwd(), '../../.env') // From apps/api to root
+];
+
+for (const envPath of envPaths) {
+  dotenv.config({ path: envPath });
+}
+
+// Debug: Log loaded environment variables
+console.log('🔧 Environment Variables Loaded:');
+console.log('DATABASE_URL:', process.env.DATABASE_URL ? 'LOADED' : 'NOT FOUND');
+console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'LOADED' : 'NOT FOUND');
+console.log('IP_ADDRESS:', process.env.IP_ADDRESS || 'NOT SET');
 
 // Get allowed origins from environment variables
 const getDefaultOrigins = () => {
@@ -31,12 +52,31 @@ const getDefaultOrigins = () => {
 
 const allowedOrigins = [
   ...getDefaultOrigins(),
-  'http://89.58.17.78:3000',
+  'https://89.58.17.78:3000',
   process.env.FRONTEND_URL
 ].filter(Boolean) as string[];
 
 const app = express();
-const httpServer = createServer(app);
+
+// Create HTTPS server if SSL certificates are available
+let httpServer;
+const useHttps = process.env.USE_HTTPS === 'true';
+
+if (useHttps) {
+  try {
+    const httpsOptions = {
+      key: readFileSync(path.join(__dirname, '../../../ssl/key.pem')),
+      cert: readFileSync(path.join(__dirname, '../../../ssl/cert.pem')),
+    };
+    httpServer = createHttpsServer(httpsOptions, app);
+    console.log('🔒 HTTPS server configured');
+  } catch (error) {
+    console.log('⚠️  SSL certificates not found, falling back to HTTP');
+    httpServer = createServer(app);
+  }
+} else {
+  httpServer = createServer(app);
+}
 
 // Setup WebSocket support
 // const wsInstance = expressWs(app, httpServer);
@@ -148,6 +188,7 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
 // app.use('/api/voice', voiceRoutes);
+app.use('/api/voice', voiceSimpleRoutes);
 
 // Socket.IO setup
 // setupSocketHandlers(io);
@@ -168,10 +209,12 @@ app.use('*', (req, res) => {
 
 // Start server
 httpServer.listen(PORT, '0.0.0.0', () => {
-  logger.info(`🚀 Server running on http://0.0.0.0:${PORT}`, {
+  const protocol = useHttps ? 'https' : 'http';
+  logger.info(`🚀 Server running on ${protocol}://0.0.0.0:${PORT}`, {
     environment: process.env.NODE_ENV,
     port: PORT,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
+    https: useHttps
   });
 });
 

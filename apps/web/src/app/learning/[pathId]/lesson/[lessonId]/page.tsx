@@ -15,7 +15,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
-import SimpleAIChat from '@/components/conversation/SimpleAIChat';
+import UnifiedLessonConversation from '@/components/conversation/UnifiedLessonConversation';
 import { TokenStorage } from '@/lib/auth';
 
 interface Lesson {
@@ -91,22 +91,52 @@ export default function LessonPage() {
       setLoading(true);
       const token = TokenStorage.getAccessToken();
       
-      const response = await fetch(`/api/learning/lessons/${lessonId}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      console.log('🔍 Fetching lesson:', lessonId, 'with token:', token ? 'present' : 'missing');
+      
+      // Try direct endpoint first (no auth) for faster response
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      
+      let response;
+      try {
+        console.log('🔄 Trying direct lesson endpoint first...');
+        response = await fetch(`${apiUrl}/api/learning/lessons-direct/${lessonId}`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        });
+      } catch (error) {
+        console.log('⚠️ Direct lesson endpoint failed, trying auth endpoint...', error);
+        // Fallback to auth endpoint
+        response = await fetch(`${apiUrl}/api/learning/lessons/${lessonId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          signal: AbortSignal.timeout(15000) // 15 second timeout
+        });
+      }
 
       if (!response.ok) {
-        throw new Error('Failed to fetch lesson');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('❌ API Error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('✅ Lesson data received:', data.data);
       setLesson(data.data);
     } catch (error) {
       console.error('Error fetching lesson:', error);
-      setError('Failed to load lesson. Please try again.');
+      setError(`Failed to load lesson. ${(error as Error).message}`);
     } finally {
       setLoading(false);
     }
@@ -117,7 +147,8 @@ export default function LessonPage() {
       const token = TokenStorage.getAccessToken();
       const timeSpent = startTime ? Math.floor((Date.now() - startTime.getTime()) / 1000) : 0;
       
-      const response = await fetch('/api/learning/progress', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      const response = await fetch(`${apiUrl}/api/learning/progress`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -367,8 +398,13 @@ export default function LessonPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Practice with AI Teacher</h2>
             {!showConversation && (
-              <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                Interactive
+              <div className="flex items-center space-x-2">
+                <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
+                  Chat & Voice
+                </div>
+                <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                  Interactive
+                </div>
               </div>
             )}
           </div>
@@ -378,11 +414,25 @@ export default function LessonPage() {
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <MessageCircle className="w-8 h-8 text-blue-600" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Start Conversation Practice</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Start Interactive Lesson Practice</h3>
               <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                Practice {lesson.title.toLowerCase()} with our AI teacher. Get real-time feedback, 
-                corrections, and personalized guidance based on your responses.
+                Practice "{lesson.title}" with our AI teacher using both text chat and voice conversation. 
+                Get real-time feedback, corrections, and personalized guidance adapted to this lesson's content.
               </p>
+              
+              {/* Feature highlights */}
+              <div className="grid grid-cols-2 gap-4 mb-6 max-w-sm mx-auto">
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <MessageCircle className="w-6 h-6 text-blue-600 mx-auto mb-1" />
+                  <div className="text-sm font-medium text-gray-900">Text Chat</div>
+                  <div className="text-xs text-gray-600">Type & practice</div>
+                </div>
+                <div className="text-center p-3 bg-white rounded-lg border">
+                  <Volume2 className="w-6 h-6 text-green-600 mx-auto mb-1" />
+                  <div className="text-sm font-medium text-gray-900">Voice Mode</div>
+                  <div className="text-xs text-gray-600">Speak naturally</div>
+                </div>
+              </div>
               <div className="flex items-center justify-center space-x-4 mb-6">
                 <div className="text-center">
                   <div className="text-2xl font-bold text-blue-600">{lesson.estimatedDuration}</div>
@@ -399,17 +449,29 @@ export default function LessonPage() {
               </div>
               <button
                 onClick={() => setShowConversation(true)}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center mx-auto"
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-green-700 transition-colors flex items-center mx-auto"
               >
                 <MessageCircle className="w-5 h-5 mr-2" />
-                Start AI Conversation
+                Start Interactive Practice
               </button>
             </div>
           ) : (
-            <div className="h-[600px]">
-              <SimpleAIChat
+            <div>
+              <UnifiedLessonConversation
                 lessonId={lessonId}
+                lessonData={{
+                  id: lesson.id,
+                  title: lesson.title,
+                  description: lesson.description,
+                  scenarioType: lesson.scenarioType,
+                  learningObjectives: lesson.learningObjectives,
+                  vocabulary: lesson.vocabulary || {},
+                  grammarFocus: lesson.grammarFocus,
+                  difficultyLevel: lesson.difficultyLevel,
+                  estimatedDuration: lesson.estimatedDuration
+                }}
                 onComplete={handleConversationComplete}
+                onClose={() => setShowConversation(false)}
               />
             </div>
           )}
@@ -461,10 +523,10 @@ export default function LessonPage() {
           {!conversationComplete && !showConversation && lesson.userProgress?.status !== 'completed' && (
             <button
               onClick={() => setShowConversation(true)}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors flex items-center"
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-green-700 transition-colors flex items-center"
             >
               <MessageCircle className="w-5 h-5 mr-2" />
-              Practice with AI
+              Start Interactive Practice
             </button>
           )}
 

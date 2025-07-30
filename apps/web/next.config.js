@@ -3,25 +3,27 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'http://89.58.17.78:3000',
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL || 'https://89.58.17.78:3000',
     NEXTAUTH_SECRET: process.env.NEXTAUTH_SECRET,
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
     MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID,
     MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET,
-    API_URL: process.env.API_URL || 'http://89.58.17.78:3001',
+    API_URL: process.env.API_URL || 'https://89.58.17.78:3001',
+    NEXT_PUBLIC_API_URL: process.env.API_URL || 'https://89.58.17.78:3001',
   },
   images: {
     domains: ['lh3.googleusercontent.com', 'graph.microsoft.com'],
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${process.env.API_URL || 'http://89.58.17.78:3001'}/api/:path*`,
-      },
-    ];
-  },
+  // Disable rewrites for now since they don't work with self-signed SSL
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/api/:path*',
+  //       destination: `${process.env.API_URL || 'https://89.58.17.78:3001'}/api/:path*`,
+  //     },
+  //   ];
+  // },
 };
 
 module.exports = nextConfig;
