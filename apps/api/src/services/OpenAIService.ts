@@ -348,6 +348,133 @@ Provide evaluation in JSON format:
   }
 
   /**
+   * Transcribe audio using OpenAI Whisper
+   */
+  async transcribeAudio(audioBuffer: Buffer, format: string = 'webm'): Promise<{ text: string }> {
+    try {
+      // Check if we're in mock mode (no real API key)
+      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-key') {
+        logger.warn('OpenAI API key not configured - using mock transcription');
+        // Return a mock transcription for development
+        const mockTranscriptions = [
+          "Hello, I would like to order something to eat.",
+          "Can I see the menu please?",
+          "What do you recommend for today?",
+          "I'll have the chicken sandwich.",
+          "Could I get some water with that?",
+          "Thank you very much!"
+        ];
+        const randomText = mockTranscriptions[Math.floor(Math.random() * mockTranscriptions.length)];
+        return { text: randomText };
+      }
+
+      // Create a temporary file for the audio
+      const fs = require('fs');
+      const path = require('path');
+      const os = require('os');
+      
+      const tempDir = os.tmpdir();
+      const tempFileName = `audio_${Date.now()}.${format === 'webm' ? 'webm' : 'wav'}`;
+      const tempFilePath = path.join(tempDir, tempFileName);
+      
+      // Write buffer to temporary file
+      fs.writeFileSync(tempFilePath, audioBuffer);
+      
+      try {
+        // Create a ReadStream for the file
+        const audioFile = fs.createReadStream(tempFilePath);
+        
+        // Transcribe using OpenAI Whisper
+        const transcription = await this.client.audio.transcriptions.create({
+          file: audioFile,
+          model: 'whisper-1',
+          language: 'en', // Specify English for better accuracy
+        });
+        
+        return { text: transcription.text || '' };
+        
+      } finally {
+        // Clean up temporary file
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (cleanupError) {
+          logger.warn('Failed to cleanup temp audio file', { error: (cleanupError as Error).message });
+        }
+      }
+      
+    } catch (error) {
+      logger.error('Error transcribing audio', { error: (error as Error).message });
+      throw new Error('Failed to transcribe audio');
+    }
+  }
+
+  /**
+   * Generate simple AI response for voice conversations
+   */
+  async generateSimpleResponse(userText: string): Promise<string> {
+    try {
+      // Check if we're in mock mode (no real API key)
+      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-key') {
+        logger.warn('OpenAI API key not configured - using mock AI response');
+        // Return a mock response for development
+        const mockResponses = [
+          "That's interesting! Can you tell me more about that?",
+          "I understand. What would you like to talk about next?",
+          "Great point! How do you feel about this topic?",
+          "Thanks for sharing that with me. What else is on your mind?",
+          "I see. Can you elaborate on that a bit more?",
+          "That sounds good! What's your next question?"
+        ];
+        const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+        return randomResponse;
+      }
+
+      // Generate real AI response using OpenAI
+      const completion = await this.client.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          {
+            role: 'system',
+            content: `You are a friendly English conversation partner helping someone practice English. Keep your responses:
+            - Natural and conversational
+            - Appropriate for the context
+            - Encouraging and supportive
+            - 1-2 sentences long
+            - Easy to understand
+            
+            Respond to what the user says in a helpful, engaging way.`
+          },
+          {
+            role: 'user',
+            content: userText
+          }
+        ],
+        max_tokens: 100,
+        temperature: 0.7,
+      });
+
+      const aiResponse = completion.choices[0]?.message?.content || 
+        "I'm sorry, I didn't quite understand that. Could you try saying it again?";
+
+      logger.info('Simple AI response generated', {
+        userText: userText.substring(0, 50),
+        responseLength: aiResponse.length
+      });
+
+      return aiResponse;
+
+    } catch (error) {
+      logger.error('Error generating simple AI response', { 
+        error: (error as Error).message,
+        userText: userText.substring(0, 50)
+      });
+      
+      // Fallback response
+      return "I'm having trouble understanding right now. Could you please try again?";
+    }
+  }
+
+  /**
    * Generate fallback evaluation when AI fails
    */
   private generateFallbackEvaluation(userMessages: string[], lessonContext: LessonContext) {
