@@ -13,8 +13,11 @@ export class LearningController {
   // Learning Paths endpoints
   getLearningPaths = async (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log('🔍 LearningController.getLearningPaths called');
       const userId = (req as any).userId; // From auth middleware
+      console.log('🔍 UserId from auth middleware:', userId);
       const paths = await this.learningService.getAllLearningPaths();
+      console.log('🔍 Paths retrieved:', paths.length);
       
       // If user is authenticated, include their progress for all lessons
       if (userId) {
@@ -74,7 +77,7 @@ export class LearningController {
           pathId, 
           userId, 
           progressCount: userProgress.length,
-          lessonsWithProgress: path.lessons.filter(l => l.userProgress).length
+          lessonsWithProgress: path.lessons.filter((l: any) => l.userProgress).length
         });
       } else {
         logger.info('No user ID - returning path without progress', { pathId });
@@ -143,14 +146,14 @@ export class LearningController {
       const lessons = await this.learningService.getLessonsByPathId(pathId);
       
       // If user is authenticated, include their progress
-      let userProgress = [];
+      let userProgress: any[] = [];
       if (userId) {
         userProgress = await this.learningService.getUserProgressByPath(userId, pathId);
       }
       
       // Merge lessons with user progress
       const lessonsWithProgress = lessons.map(lesson => {
-        const progress = userProgress.find(p => p.lessonId === lesson.id);
+        const progress = userProgress.find((p: any) => p.lessonId === lesson.id);
         return {
           ...lesson,
           userProgress: progress || null

@@ -87,7 +87,7 @@ export default function LearningPathPage() {
       
       console.log('🔍 Fetching learning path:', pathId, 'with token:', token ? 'present' : 'missing');
       
-      const response = await fetch(`/api/learning/paths/${pathId}`, {
+      const response = await fetch(`http://89.58.17.78:3001/api/learning/paths/${pathId}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

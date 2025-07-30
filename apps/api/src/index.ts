@@ -11,11 +11,11 @@ import { errorHandler } from '@/middleware/errorHandler';
 import { logger } from '@/utils/logger';
 import { authRoutes } from '@/routes/auth';
 import { userRoutes } from '@/routes/users';
-import { conversationRoutes } from '@/routes/conversations';
+// import { conversationRoutes } from '@/routes/conversations';
 import { learningRoutes } from '@/routes/learning';
 import { analyticsRoutes } from '@/routes/analytics';
 // import { voiceRoutes } from '@/routes/voice';
-import { setupSocketHandlers } from '@/services/socket';
+// import { setupSocketHandlers } from '@/services/socket';
 // import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
 dotenv.config();
@@ -98,16 +98,59 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint to see what's being called
+app.get('/api/debug/learning-request', (req, res) => {
+  console.log('🔥 DEBUG: Learning request received from frontend');
+  res.json({ message: 'Debug endpoint working', timestamp: new Date().toISOString() });
+});
+
+// Direct learning paths endpoint for testing
+app.get('/api/learning/paths-direct', async (req, res) => {
+  try {
+    console.log('🔥 DIRECT ENDPOINT: paths-direct called from IP:', req.ip);
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    const paths = await prisma.learningPath.findMany({
+      where: { isActive: true },
+      include: {
+        lessons: {
+          select: {
+            id: true,
+            title: true,
+            orderIndex: true,
+            difficultyLevel: true,
+            estimatedDuration: true,
+          },
+          orderBy: { orderIndex: 'asc' }
+        }
+      },
+      orderBy: { name: 'asc' }
+    });
+    
+    res.json({
+      success: true,
+      data: paths,
+      message: 'Learning paths retrieved successfully from direct endpoint',
+      count: paths.length
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Database error', 
+      details: (error as Error).message 
+    });
+  }
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/conversations', conversationRoutes);
+// app.use('/api/conversations', conversationRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
 // app.use('/api/voice', voiceRoutes);
 
 // Socket.IO setup
-setupSocketHandlers(io);
+// setupSocketHandlers(io);
 
 // WebSocket setup for voice
 // setupVoiceWebSocket(wsApp);

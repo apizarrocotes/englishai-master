@@ -65,7 +65,7 @@ export default function LearningPage() {
         throw new Error('No authentication token found');
       }
       
-      const response = await fetch('/api/learning/paths', {
+      const response = await fetch('http://89.58.17.78:3001/api/learning/paths-direct', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',

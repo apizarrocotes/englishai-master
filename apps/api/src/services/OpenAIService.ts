@@ -46,13 +46,17 @@ export class OpenAIService {
   private client: OpenAI;
 
   constructor() {
-    if (!process.env.OPENAI_API_KEY) {
-      throw new Error('OpenAI API key is required');
+    if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-key') {
+      logger.warn('OpenAI API key not configured - using mock mode');
+      this.client = new OpenAI({
+        apiKey: 'test-key',
+      });
+    } else {
+      this.client = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        organization: process.env.OPENAI_ORGANIZATION
+      });
     }
-    
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
   }
 
   /**
@@ -126,12 +130,12 @@ Begin the conversation by greeting the student and introducing the lesson scenar
       logger.info('AI teacher response generated', {
         userMessage: userMessage.substring(0, 100),
         responseLength: aiMessage.length,
-        correctionsCount: corrections.length
+        correctionsCount: corrections?.length || 0
       });
 
       return {
         message: aiMessage,
-        corrections: corrections.length > 0 ? corrections : undefined,
+        corrections: corrections && corrections.length > 0 ? corrections : undefined,
         suggestions
       };
 

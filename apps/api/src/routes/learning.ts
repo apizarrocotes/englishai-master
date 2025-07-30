@@ -7,6 +7,27 @@ import { body, param, query } from 'express-validator';
 const router = Router();
 const learningController = new LearningController();
 
+// Test route
+router.get('/test', (req, res) => {
+  res.json({ message: 'Learning routes are working!', timestamp: new Date().toISOString() });
+});
+
+// Alternative paths endpoint
+router.get('/learning-paths-v2', async (req, res) => {
+  try {
+    const { LearningService } = require('@/services/LearningService');
+    const learningService = new LearningService();
+    const paths = await learningService.getAllLearningPaths();
+    res.json({
+      success: true,
+      data: paths,
+      message: 'Learning paths retrieved successfully from v2 endpoint'
+    });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Learning Paths routes
 router.get('/paths', authenticateToken, learningController.getLearningPaths);
 router.get('/paths/:pathId', 

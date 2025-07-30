@@ -164,8 +164,8 @@ export class ConversationService {
       };
 
       const openingMessage = await this.openAIService.generateConversationStarter(
-        scenario.aiPersona,
-        lessonContext
+        scenario.aiPersona as any,
+        lessonContext as any
       );
 
       // Save AI's opening message
@@ -174,7 +174,7 @@ export class ConversationService {
           sessionId: session.id,
           sender: 'ai',
           content: openingMessage,
-          corrections: null
+          corrections: null as any
         }
       });
 
@@ -233,7 +233,7 @@ export class ConversationService {
           sessionId: data.sessionId,
           sender: 'user',
           content: data.message,
-          corrections: null
+          corrections: null as any
         }
       });
 
@@ -267,7 +267,7 @@ export class ConversationService {
           sessionId: data.sessionId,
           sender: 'ai',
           content: aiResponse.message,
-          corrections: aiResponse.corrections || null
+          corrections: (aiResponse.corrections || null) as any
         }
       });
 
@@ -293,7 +293,7 @@ export class ConversationService {
       return {
         userMessage: {
           ...userMessage,
-          corrections: aiResponse.corrections || null
+          corrections: (aiResponse.corrections || null) as any
         },
         aiResponse: {
           ...aiMessage,
@@ -389,7 +389,7 @@ export class ConversationService {
       });
 
       return {
-        session: updatedSession,
+        session: updatedSession as ConversationSession,
         evaluation
       };
 
@@ -425,6 +425,10 @@ export class ConversationService {
       throw new Error('Conversation session not found');
     }
 
+    if (!session.scenario.lesson) {
+      throw new Error('Conversation session has no associated lesson');
+    }
+
     return session as ConversationSession;
   }
 
@@ -452,7 +456,7 @@ export class ConversationService {
       take: limit
     });
 
-    return sessions as ConversationSession[];
+    return sessions.filter(session => session.scenario.lesson !== null) as ConversationSession[];
   }
 
   /**
