@@ -32,17 +32,17 @@ async function handleAudioEnd(ws: any, sessionId: string) {
         text: result.transcription
       }));
 
-      // Generate AI response
-      const aiResponse = await voiceService.generateAIResponse(sessionId, result.transcription);
-      
-      // Convert response to speech and send back
-      const audioResponse = await voiceService.textToSpeech(aiResponse.text);
-      
-      ws.send(JSON.stringify({
-        type: 'audio_response',
-        text: aiResponse.text,
-        audio: audioResponse.audioBase64
-      }));
+      // Generate streaming AI response
+      await voiceService.generateStreamingResponse(
+        sessionId, 
+        result.transcription,
+        (type: string, data: any) => {
+          ws.send(JSON.stringify({
+            type,
+            ...data
+          }));
+        }
+      );
     }
   } catch (error) {
     logger.error('Error finalizing audio processing', { error: (error as Error).message, sessionId });
@@ -55,17 +55,17 @@ async function handleAudioEnd(ws: any, sessionId: string) {
 
 async function handleTextMessage(ws: any, message: any, sessionId: string) {
   try {
-    // Generate AI response for text input
-    const aiResponse = await voiceService.generateAIResponse(sessionId, message.text);
-    
-    // Convert response to speech
-    const audioResponse = await voiceService.textToSpeech(aiResponse.text);
-    
-    ws.send(JSON.stringify({
-      type: 'audio_response',
-      text: aiResponse.text,
-      audio: audioResponse.audioBase64
-    }));
+    // Generate streaming AI response for text input
+    await voiceService.generateStreamingResponse(
+      sessionId, 
+      message.text,
+      (type: string, data: any) => {
+        ws.send(JSON.stringify({
+          type,
+          ...data
+        }));
+      }
+    );
   } catch (error) {
     logger.error('Error handling text message', { error: (error as Error).message, sessionId });
     ws.send(JSON.stringify({

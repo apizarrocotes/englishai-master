@@ -15,6 +15,7 @@ export interface SendMessageData {
   sessionId: string;
   userId: string;
   message: string;
+  isTranscription?: boolean;
 }
 
 export interface ConversationSession {
@@ -258,7 +259,8 @@ export class ConversationService {
         data.message,
         conversationHistory,
         session.scenario.aiPersona,
-        lessonContext
+        lessonContext,
+        data.isTranscription || false
       );
 
       // Save AI's response

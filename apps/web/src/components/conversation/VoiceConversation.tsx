@@ -14,6 +14,7 @@ import {
   Loader2,
   AlertCircle
 } from 'lucide-react';
+import { TokenStorage } from '@/lib/auth';
 
 interface VoiceConversationProps {
   lessonId: string;
@@ -31,6 +32,15 @@ interface ConversationMessage {
   timestamp: Date;
   audioBlob?: Blob;
   isPlaying?: boolean;
+  isStreaming?: boolean;
+  sentences?: SentenceFragment[];
+}
+
+interface SentenceFragment {
+  text: string;
+  index: number;
+  audioBlob?: Blob;
+  isComplete: boolean;
 }
 
 export default function VoiceConversation({
@@ -134,8 +144,18 @@ export default function VoiceConversation({
   const handleWebSocketMessage = (data: string) => {
     try {
       const message = JSON.parse(data);
+      console.log('🔵 WebSocket message received:', message.type, message);
       
       switch (message.type) {
+        case 'sentence_stream':
+          handleSentenceStream(message);
+          break;
+        case 'sentence_audio':
+          handleSentenceAudio(message);
+          break;
+        case 'text_response':
+          handleTextResponse(message.text);
+          break;
         case 'audio_response':
           handleAudioResponse(message.audio, message.text);
           break;
@@ -153,6 +173,113 @@ export default function VoiceConversation({
     }
   };
 
+  const handleSentenceStream = (data: any) => {
+    const { text, index, total, isLast } = data;
+    
+    setMessages(prev => {
+      const lastMessage = prev[prev.length - 1];
+      
+      // If this is the first sentence, create a new streaming message
+      if (index === 0) {
+        const newMessage: ConversationMessage = {
+          id: `assistant_${Date.now()}`,
+          role: 'assistant',
+          content: text,
+          timestamp: new Date(),
+          isStreaming: !isLast,
+          sentences: [{
+            text,
+            index,
+            isComplete: false
+          }]
+        };
+        setIsProcessing(false);
+        return [...prev, newMessage];
+      }
+      
+      // Update existing streaming message
+      if (lastMessage && lastMessage.isStreaming) {
+        const updatedSentences = [...(lastMessage.sentences || [])];
+        updatedSentences[index] = {
+          text,
+          index,
+          isComplete: false
+        };
+        
+        const updatedMessage = {
+          ...lastMessage,
+          content: updatedSentences.map(s => s.text).join(' '),
+          isStreaming: !isLast,
+          sentences: updatedSentences
+        };
+        
+        return [...prev.slice(0, -1), updatedMessage];
+      }
+      
+      return prev;
+    });
+
+    if (onResponseReceived && index === total - 1) {
+      onResponseReceived(text);
+    }
+  };
+
+  const handleSentenceAudio = (data: any) => {
+    const { text, audio, index } = data;
+    
+    try {
+      // Convert base64 to blob
+      const audioData = atob(audio);
+      const arrayBuffer = new ArrayBuffer(audioData.length);
+      const view = new Uint8Array(arrayBuffer);
+      for (let i = 0; i < audioData.length; i++) {
+        view[i] = audioData.charCodeAt(i);
+      }
+      const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+
+      setMessages(prev => prev.map(msg => {
+        if (msg.role === 'assistant' && msg.sentences) {
+          const updatedSentences = msg.sentences.map(sentence => 
+            sentence.index === index 
+              ? { ...sentence, audioBlob, isComplete: true }
+              : sentence
+          );
+          
+          return {
+            ...msg,
+            sentences: updatedSentences
+          };
+        }
+        return msg;
+      }));
+
+      // Auto-play if audio is enabled and this is the first sentence audio ready
+      if (isAudioEnabled && index === 0) {
+        playAudio(audioBlob);
+      }
+    } catch (error) {
+      console.error('Failed to handle sentence audio:', error);
+    }
+  };
+
+  const handleTextResponse = (text: string) => {
+    const messageId = `assistant_${Date.now()}`;
+    
+    const newMessage: ConversationMessage = {
+      id: messageId,
+      role: 'assistant',
+      content: text,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    setIsProcessing(false);
+
+    if (onResponseReceived) {
+      onResponseReceived(text);
+    }
+  };
+
   const handleAudioResponse = (audioBase64: string, text: string) => {
     try {
       // Convert base64 to blob
@@ -164,15 +291,12 @@ export default function VoiceConversation({
       }
       const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
 
-      const newMessage: ConversationMessage = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: text,
-        timestamp: new Date(),
-        audioBlob
-      };
-
-      setMessages(prev => [...prev, newMessage]);
+      // Find existing message with same text and update it with audio
+      setMessages(prev => prev.map(msg => 
+        msg.role === 'assistant' && msg.content === text && !msg.audioBlob
+          ? { ...msg, audioBlob }
+          : msg
+      ));
 
       // Auto-play if audio is enabled
       if (isAudioEnabled) {
@@ -197,6 +321,7 @@ export default function VoiceConversation({
     };
 
     setMessages(prev => [...prev, newMessage]);
+    setIsProcessing(true);
 
     if (onMessageSent) {
       onMessageSent(text);
@@ -373,12 +498,45 @@ export default function VoiceConversation({
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-900'
               }`}>
-                <p className="text-sm">{message.content}</p>
+                {message.sentences && message.sentences.length > 0 ? (
+                  // Streaming message - show sentences as they come
+                  <div className="text-sm space-y-1">
+                    {message.sentences.map((sentence, idx) => (
+                      <motion.span
+                        key={idx}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                        className={`block ${sentence.isComplete ? 'opacity-100' : 'opacity-70'}`}
+                      >
+                        {sentence.text}
+                        {sentence.isComplete && sentence.audioBlob && (
+                          <button
+                            onClick={() => playAudio(sentence.audioBlob!)}
+                            className="ml-2 p-0.5 rounded hover:bg-black/10 transition-colors inline-flex"
+                          >
+                            <Play className="w-2.5 h-2.5" />
+                          </button>
+                        )}
+                      </motion.span>
+                    ))}
+                    {message.isStreaming && (
+                      <motion.span
+                        animate={{ opacity: [0.5, 1, 0.5] }}
+                        transition={{ repeat: Infinity, duration: 1.5 }}
+                        className="inline-block w-2 h-4 bg-current ml-1"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  // Regular message
+                  <p className="text-sm">{message.content}</p>
+                )}
                 <div className="flex items-center justify-between mt-2">
                   <span className="text-xs opacity-75">
                     {message.timestamp.toLocaleTimeString()}
                   </span>
-                  {message.audioBlob && (
+                  {message.audioBlob && !message.sentences && (
                     <button
                       onClick={() => playAudio(message.audioBlob!)}
                       className="ml-2 p-1 rounded hover:bg-black/10 transition-colors"

@@ -156,12 +156,12 @@ export default function UnifiedLessonConversation({
       
       setMessages([initialMessage]);
       
-      // Generate speech for greeting if in voice mode
-      if (mode === 'voice' && !isMuted) {
-        setTimeout(() => {
-          generateSpeechForMessage(greeting);
-        }, 500);
-      }
+      // Speech for greeting disabled - will be handled by streaming if needed
+      // if (mode === 'voice' && !isMuted) {
+      //   setTimeout(() => {
+      //     generateSpeechForMessage(greeting);
+      //   }, 500);
+      // }
       
     } catch (error) {
       console.error('Error initializing conversation:', error);
@@ -260,7 +260,126 @@ export default function UnifiedLessonConversation({
     }
   };
 
+  // Generate audio blob for a sentence (non-blocking)
+  const generateAudioBlob = async (text: string): Promise<Blob | null> => {
+    try {
+      const token = TokenStorage.getAccessToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      
+      const voiceConfig = {
+        text: text,
+        voice: activeTeacher?.voiceConfig?.voice || 'nova',
+        speed: activeTeacher?.voiceConfig?.speed || 0.95
+      };
+
+      const ttsResponse = await fetch(`${apiUrl}/api/voice/tts`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(voiceConfig),
+      });
+
+      if (ttsResponse.ok) {
+        const ttsData = await ttsResponse.json();
+        const audioBlob = new Blob([Uint8Array.from(atob(ttsData.data.audio), c => c.charCodeAt(0))], { type: 'audio/mp3' });
+        return audioBlob;
+      }
+    } catch (error) {
+      console.warn('Failed to generate audio blob:', error);
+    }
+    
+    return null;
+  };
+
+  // Play an audio blob and wait for it to finish
+  const playAudioBlob = async (audioBlob: Blob): Promise<void> => {
+    return new Promise((resolve) => {
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        resolve();
+      };
+      
+      audio.play().catch(() => resolve());
+    });
+  };
+
+  const generateSpeechForSentence = async (text: string): Promise<void> => {
+    return new Promise(async (resolve) => {
+      if (isGeneratingSpeech || isPlayingAudio || isMuted) {
+        resolve();
+        return;
+      }
+      
+      setIsGeneratingSpeech(true);
+      
+      try {
+        // Try OpenAI TTS first
+        const token = TokenStorage.getAccessToken();
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+        
+        const voiceConfig = {
+          text: text,
+          voice: activeTeacher?.voiceConfig?.voice || 'nova',
+          speed: activeTeacher?.voiceConfig?.speed || 0.95
+        };
+
+        const ttsResponse = await fetch(`${apiUrl}/api/voice/tts`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(voiceConfig),
+        });
+
+        if (ttsResponse.ok) {
+          const ttsData = await ttsResponse.json();
+          const audioBlob = new Blob([Uint8Array.from(atob(ttsData.data.audio), c => c.charCodeAt(0))], { type: 'audio/mp3' });
+          const audioUrl = URL.createObjectURL(audioBlob);
+          
+          setIsPlayingAudio(true);
+          const audio = new Audio(audioUrl);
+          
+          audio.onended = () => {
+            setIsPlayingAudio(false);
+            setIsGeneratingSpeech(false);
+            URL.revokeObjectURL(audioUrl);
+            resolve();
+          };
+          
+          audio.onerror = () => {
+            setIsPlayingAudio(false);
+            setIsGeneratingSpeech(false);
+            URL.revokeObjectURL(audioUrl);
+            resolve();
+          };
+          
+          await audio.play();
+          return;
+        }
+      } catch (error) {
+        console.warn('OpenAI TTS failed for sentence:', error);
+      }
+      
+      setIsGeneratingSpeech(false);
+      resolve();
+    });
+  };
+
   const generateSpeechForMessage = async (text: string) => {
+    console.log('❌ OLD FUNCTION CALLED - THIS SHOULD NOT HAPPEN:', text.substring(0, 50));
+    return; // Disable this function completely
+    
     if (isGeneratingSpeech || isPlayingAudio || isMuted) return;
     
     setIsGeneratingSpeech(true);
@@ -372,6 +491,60 @@ export default function UnifiedLessonConversation({
     }
   };
 
+  const streamSentences = async (aiResponse: any) => {
+    console.log('🔵 STREAMING STARTED with sentences:', aiResponse.sentences);
+    
+    // Pre-generate ALL audio in parallel if in voice mode
+    const audioPromises: { [key: number]: Promise<Blob | null> } = {};
+    if (mode === 'voice' && !isMuted) {
+      console.log('🔵 Pre-generating audio for all sentences in parallel...');
+      aiResponse.sentences.forEach((sentence: string, index: number) => {
+        audioPromises[index] = generateAudioBlob(sentence);
+      });
+    }
+    
+    // Show sentences with smooth timing while audio loads in background
+    for (let i = 0; i < aiResponse.sentences.length; i++) {
+      const sentence = aiResponse.sentences[i];
+      
+      // Create a separate message for each sentence
+      const sentenceMessage: Message = {
+        id: `ai-${Date.now()}-${i}`,
+        role: 'assistant',
+        content: sentence,
+        timestamp: new Date(),
+        corrections: i === 0 ? aiResponse.corrections : undefined,
+        suggestions: i === 0 ? aiResponse.suggestions : undefined
+      };
+      
+      console.log(`🔵 Adding sentence ${i + 1}/${aiResponse.sentences.length}:`, sentence);
+      
+      setMessages(prev => [...prev, sentenceMessage]);
+      setMessageAnimations(prev => ({ ...prev, [sentenceMessage.id]: true }));
+      
+      if (i === 0) {
+        setMessageCount(prev => prev + 1);
+      }
+      
+      // Play audio for this sentence if available and in voice mode
+      // The audio playback will naturally control the timing
+      if (mode === 'voice' && !isMuted && audioPromises[i]) {
+        console.log('🔵 Waiting for audio to be ready for sentence:', i + 1);
+        const audioBlob = await audioPromises[i];
+        if (audioBlob) {
+          console.log('🔵 Playing audio for sentence:', i + 1);
+          await playAudioBlob(audioBlob);
+          console.log('🔵 Audio finished for sentence:', i + 1);
+        }
+      } else if (mode === 'chat') {
+        // In text mode, add small delay for readability
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+    }
+    
+    console.log('🔵 STREAMING COMPLETED');
+  };
+
   const sendMessageToAI = async (userText: string) => {
     setIsProcessing(true);
     setTypingIndicator(true);
@@ -383,23 +556,37 @@ export default function UnifiedLessonConversation({
       // Generate contextual AI response based on lesson content
       const aiResponse = await generateContextualAIResponse(userText);
       
-      const aiMessage: Message = {
-        id: `ai-${Date.now()}`,
-        role: 'assistant',
-        content: aiResponse.text,
-        timestamp: new Date(),
-        corrections: aiResponse.corrections,
-        suggestions: aiResponse.suggestions
-      };
-      
-      // Add message with animation trigger
-      setMessages(prev => [...prev, aiMessage]);
-      setMessageAnimations(prev => ({ ...prev, [aiMessage.id]: true }));
-      setMessageCount(prev => prev + 1);
-      
-      // Generate speech for AI response in voice mode
-      if (mode === 'voice' && !isMuted) {
-        generateSpeechForMessage(aiResponse.text);
+      // If we have sentences, stream them one by one
+      console.log('🔵 Checking sentences:', aiResponse.sentences?.length, aiResponse.sentences);
+      if (aiResponse.sentences && aiResponse.sentences.length > 1) {
+        console.log('🔵 About to call streamSentences with', aiResponse.sentences.length, 'sentences');
+        
+        // Completely disable processing and typing indicators during streaming
+        setIsProcessing(false);
+        setTypingIndicator(false);
+        
+        await streamSentences(aiResponse);
+        
+        console.log('🔵 streamSentences completed');
+      } else {
+        console.log('🔵 Using fallback - no sentences or only 1 sentence');
+        // Fallback to showing complete message
+        const aiMessage: Message = {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: aiResponse.text,
+          timestamp: new Date(),
+          corrections: aiResponse.corrections,
+          suggestions: aiResponse.suggestions
+        };
+        
+        // Add message with animation trigger
+        setMessages(prev => [...prev, aiMessage]);
+        setMessageAnimations(prev => ({ ...prev, [aiMessage.id]: true }));
+        setMessageCount(prev => prev + 1);
+        
+        // Speech is handled in streamSentences() - don't generate here
+        // generateSpeechForMessage(aiResponse.text);
       }
       
       // Check if conversation should end (but don't auto-end, let user decide)
@@ -434,14 +621,17 @@ export default function UnifiedLessonConversation({
           message: userMessage,
           lessonData: lessonData,
           conversationHistory: messages.slice(-5), // Send last 5 messages for context
-          teacherProfile: activeTeacher // Send the active teacher profile for persona
+          teacherProfile: activeTeacher, // Send the active teacher profile for persona
+          isVoiceTranscription: mode === 'voice' // Tell API this is voice transcription
         }),
       });
 
       if (response.ok) {
         const data = await response.json();
+        console.log('🔵 API Response received:', data.data);
         return {
           text: data.data.text,
+          sentences: data.data.sentences, // Add sentences for streaming
           corrections: data.data.corrections,
           suggestions: data.data.suggestions
         };

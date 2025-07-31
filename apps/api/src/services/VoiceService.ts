@@ -36,6 +36,7 @@ export class VoiceService {
   private whisperModel: string;
   private ttsModel: string;
   private ttsVoice: string;
+  private audioCache: Map<string, TTSResult> = new Map();
 
   constructor() {
     if (process.env.OPENAI_API_KEY) {
@@ -50,7 +51,7 @@ export class VoiceService {
     
     // Configure models from environment variables with fallbacks
     this.whisperModel = process.env.OPENAI_WHISPER_MODEL || 'whisper-1';
-    this.ttsModel = process.env.OPENAI_TTS_MODEL || 'tts-1-hd';
+    this.ttsModel = process.env.OPENAI_TTS_MODEL || 'tts-1';
     this.ttsVoice = process.env.OPENAI_TTS_VOICE || 'nova';
   }
 
@@ -211,7 +212,8 @@ export class VoiceService {
       const response = await this.conversationService.sendMessage({
         sessionId: session.conversationId,
         userId: session.userId,
-        message: userMessage
+        message: userMessage,
+        isTranscription: true
       });
 
       logger.info('AI response generated for voice session', {
@@ -238,6 +240,13 @@ export class VoiceService {
     try {
       if (!this.openai) {
         throw new Error('OpenAI API not configured');
+      }
+
+      // Check cache first
+      const cacheKey = `${text}_${voice}_${speed}`;
+      if (this.audioCache.has(cacheKey)) {
+        logger.info('VoiceService.textToSpeech - cache hit', { cacheKey });
+        return this.audioCache.get(cacheKey)!;
       }
 
       logger.info('VoiceService.textToSpeech - starting TTS', {
@@ -287,18 +296,32 @@ export class VoiceService {
       const buffer = Buffer.from(await mp3.arrayBuffer());
       const audioBase64 = buffer.toString('base64');
 
+      const result = {
+        audioBase64,
+        format: 'mp3'
+      };
+
+      // Cache the result for future use
+      this.audioCache.set(cacheKey, result);
+      
+      // Limit cache size to prevent memory issues
+      if (this.audioCache.size > 100) {
+        const firstKey = this.audioCache.keys().next().value;
+        if (firstKey) {
+          this.audioCache.delete(firstKey);
+        }
+      }
+
       logger.info('VoiceService.textToSpeech - conversion completed successfully', {
         textLength: text.length,
         finalVoice: voice,
         finalSpeed: speed,
         audioSize: buffer.length,
-        ttsModel: this.ttsModel
+        ttsModel: this.ttsModel,
+        cached: true
       });
 
-      return {
-        audioBase64,
-        format: 'mp3'
-      };
+      return result;
     } catch (error) {
       logger.error('Text to speech failed', { 
         error: (error as Error).message,
@@ -349,6 +372,112 @@ export class VoiceService {
         this.endVoiceSession(sessionId);
         logger.info('Cleaned up inactive voice session', { sessionId });
       }
+    }
+  }
+
+  // Split text into sentences for streaming
+  private splitIntoSentences(text: string): string[] {
+    // More robust sentence splitting
+    const sentences = text
+      // Split on sentence endings (.!?) optionally followed by quotes/parentheses, then whitespace and capital letter
+      .split(/(?<=[.!?])["']?\s+(?=[A-Z])/)
+      .map(sentence => sentence.trim())
+      .filter(sentence => sentence.length > 0);
+    
+    // Handle cases where sentences might be too short - combine very short ones
+    const optimizedSentences: string[] = [];
+    
+    for (const sentence of sentences) {
+      // Only combine if sentence is extremely short (< 10 chars) 
+      if (sentence.length < 10 && optimizedSentences.length > 0) {
+        // Combine with the last sentence
+        optimizedSentences[optimizedSentences.length - 1] += ' ' + sentence;
+      } else {
+        optimizedSentences.push(sentence);
+      }
+    }
+    
+    logger.info('Sentence splitting result', {
+      originalLength: text.length,
+      totalSentences: optimizedSentences.length,
+      sentences: optimizedSentences.map(s => s.substring(0, 30) + '...')
+    });
+    
+    return optimizedSentences;
+  }
+
+  // Generate streaming response with audio for each sentence
+  async generateStreamingResponse(sessionId: string, userMessage: string, sendCallback: (type: string, data: any) => void): Promise<void> {
+    const session = this.activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error('Voice session not found');
+    }
+
+    try {
+      if (!session.conversationId) {
+        throw new Error('No conversation session found');
+      }
+
+      // Generate AI response
+      const response = await this.conversationService.sendMessage({
+        sessionId: session.conversationId,
+        userId: session.userId,
+        message: userMessage,
+        isTranscription: true
+      });
+
+      // Split response into sentences
+      const sentences = this.splitIntoSentences(response.aiResponse);
+      
+      logger.info('Streaming response in sentences', {
+        sessionId,
+        originalText: response.aiResponse,
+        totalSentences: sentences.length,
+        sentences: sentences.map((s, i) => `${i+1}: ${s.substring(0, 50)}...`)
+      });
+
+      // Send sentences progressively
+      for (let i = 0; i < sentences.length; i++) {
+        const sentence = sentences[i];
+        
+        // Send text immediately
+        sendCallback('sentence_stream', {
+          text: sentence,
+          index: i,
+          total: sentences.length,
+          isLast: i === sentences.length - 1
+        });
+
+        // Generate audio for this sentence in parallel (non-blocking)
+        this.textToSpeech(sentence).then(audioResponse => {
+          sendCallback('sentence_audio', {
+            text: sentence,
+            audio: audioResponse.audioBase64,
+            index: i,
+            total: sentences.length,
+            isLast: i === sentences.length - 1
+          });
+        }).catch(error => {
+          logger.error('Error generating audio for sentence', { 
+            error: error.message, 
+            sessionId, 
+            sentenceIndex: i 
+          });
+        });
+
+        // Small delay between sentences for natural pacing
+        if (i < sentences.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+    } catch (error) {
+      logger.error('Failed to generate streaming response', {
+        error: (error as Error).message,
+        sessionId,
+        userMessage
+      });
+      throw error;
     }
   }
 

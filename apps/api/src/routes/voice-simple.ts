@@ -80,7 +80,7 @@ router.post('/lesson-chat',
   authenticateToken,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { message, lessonData, conversationHistory = [], teacherProfile } = req.body;
+      const { message, lessonData, conversationHistory = [], teacherProfile, isVoiceTranscription = false } = req.body;
       
       if (!message || !lessonData) {
         return res.status(400).json({
@@ -90,17 +90,29 @@ router.post('/lesson-chat',
       }
 
       // Generate contextual AI response using teacher profile and lesson content
-      const contextPrompt = generateLessonContextPrompt(lessonData, conversationHistory, message, teacherProfile);
+      logger.info('Lesson chat request received', { 
+        message: message.substring(0, 50), 
+        lessonTitle: lessonData.title,
+        isVoiceTranscription 
+      });
+      
+      const contextPrompt = generateLessonContextPrompt(lessonData, conversationHistory, message, teacherProfile, isVoiceTranscription);
       const aiResponse = await openaiService.generateContextualResponse(message, contextPrompt);
       
-      // Simple grammar/vocabulary corrections (mock for now)
-      const corrections = generateSimpleCorrections(message, lessonData);
+      logger.info('AI response generated', { responseLength: aiResponse.length, preview: aiResponse.substring(0, 100) });
+      
+      // Split response into sentences for streaming-like effect
+      const sentences = splitIntoSentences(aiResponse);
+      
+      // Simple grammar/vocabulary corrections - skip for voice transcriptions
+      const corrections = isVoiceTranscription ? [] : generateSimpleCorrections(message, lessonData);
       const suggestions = generateSuggestions(lessonData);
       
       res.json({
         success: true,
         data: {
           text: aiResponse,
+          sentences: sentences, // Add sentences array for frontend streaming
           corrections: corrections.length > 0 ? corrections : undefined,
           suggestions: suggestions.length > 0 ? suggestions : undefined
         }
@@ -114,7 +126,7 @@ router.post('/lesson-chat',
 );
 
 // Helper function to generate lesson-specific context
-function generateLessonContextPrompt(lessonData: any, history: any[], currentMessage: string, teacherProfile?: any): string {
+function generateLessonContextPrompt(lessonData: any, history: any[], currentMessage: string, teacherProfile?: any, isVoiceTranscription: boolean = false): string {
   const { title, scenarioType, learningObjectives, vocabulary, grammarFocus } = lessonData;
   
   // Use teacher profile if available
@@ -152,14 +164,27 @@ function generateLessonContextPrompt(lessonData: any, history: any[], currentMes
     context += `Grammar focus: ${grammarFocus.join(', ')}. `;
   }
   
-  context += `
+  // Add different guidelines based on input type
+  if (isVoiceTranscription) {
+    context += `
+  
+Guidelines for VOICE conversation:
+1. Stay in character for the ${scenarioType} scenario
+2. Naturally incorporate lesson vocabulary and grammar points  
+3. DO NOT correct punctuation, capitalization, or natural speech patterns
+4. Only correct significant grammar/vocabulary errors that affect communication
+5. Keep responses conversational and encouraging
+6. Ask follow-up questions to practice specific skills`;
+  } else {
+    context += `
   
 Guidelines:
 1. Stay in character for the ${scenarioType} scenario
 2. Naturally incorporate lesson vocabulary and grammar points
 3. Provide gentle corrections when needed
 4. Keep responses conversational and encouraging
-5. Ask follow-up questions to practice specific skills
+5. Ask follow-up questions to practice specific skills`;
+  }
 6. Adapt difficulty to student's level
 7. Make the conversation realistic and practical
 
@@ -215,6 +240,37 @@ function generateSuggestions(lessonData: any): string[] {
   }
   
   return suggestions;
+}
+
+// Split text into sentences for streaming-like effect
+function splitIntoSentences(text: string): string[] {
+  // More robust sentence splitting
+  const sentences = text
+    // Split on sentence endings (.!?) optionally followed by quotes/parentheses, then whitespace and capital letter
+    .split(/(?<=[.!?])["']?\s+(?=[A-Z])/)
+    .map(sentence => sentence.trim())
+    .filter(sentence => sentence.length > 0);
+  
+  // Handle cases where sentences might be too short - combine very short ones
+  const optimizedSentences: string[] = [];
+  
+  for (const sentence of sentences) {
+    // Only combine if sentence is extremely short (< 10 chars) 
+    if (sentence.length < 10 && optimizedSentences.length > 0) {
+      // Combine with the last sentence
+      optimizedSentences[optimizedSentences.length - 1] += ' ' + sentence;
+    } else {
+      optimizedSentences.push(sentence);
+    }
+  }
+  
+  logger.info('Sentence splitting result', {
+    originalLength: text.length,
+    totalSentences: optimizedSentences.length,
+    sentences: optimizedSentences.map(s => s.substring(0, 30) + '...')
+  });
+  
+  return optimizedSentences;
 }
 
 export { router as voiceSimpleRoutes };

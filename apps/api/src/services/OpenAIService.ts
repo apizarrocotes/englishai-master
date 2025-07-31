@@ -251,7 +251,8 @@ Begin the conversation by greeting the student and introducing the lesson scenar
     userMessage: string,
     conversationHistory: ConversationMessage[],
     persona: TeacherPersona,
-    lessonContext: LessonContext
+    lessonContext: LessonContext,
+    isTranscription: boolean = false
   ): Promise<AIResponse> {
     try {
       // Prepare messages for OpenAI
@@ -279,7 +280,7 @@ Begin the conversation by greeting the student and introducing the lesson scenar
       const aiMessage = completion.choices[0]?.message?.content || 'I apologize, but I couldn\'t generate a response. Please try again.';
 
       // Generate corrections and feedback if needed
-      const corrections = await this.analyzeAndCorrect(userMessage, lessonContext);
+      const corrections = await this.analyzeAndCorrect(userMessage, lessonContext, isTranscription);
       const suggestions = this.generateSuggestions(userMessage, lessonContext);
 
       logger.info('AI teacher response generated', {
@@ -313,9 +314,15 @@ Begin the conversation by greeting the student and introducing the lesson scenar
    */
   private async analyzeAndCorrect(
     userMessage: string, 
-    lessonContext: LessonContext
+    lessonContext: LessonContext,
+    isTranscription: boolean = false
   ): Promise<AIResponse['corrections']> {
     try {
+      // Skip corrections for speech transcriptions - they may have natural speech patterns
+      if (isTranscription) {
+        return [];
+      }
+
       const correctionPrompt = `As an English teacher, analyze this student message for errors and provide corrections:
 
 Student message: "${userMessage}"
