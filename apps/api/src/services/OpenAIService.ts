@@ -1,5 +1,7 @@
 import OpenAI from 'openai';
 import { logger } from '@/utils/logger';
+import { TeacherProfile } from '@/types/TeacherProfile';
+import TeacherProfileService from './TeacherProfileService';
 
 interface TeacherPersona {
   id: string;
@@ -44,6 +46,12 @@ interface AIResponse {
 
 export class OpenAIService {
   private client: OpenAI;
+  private chatModel: string;
+  private simpleModel: string;
+  private whisperModel: string;
+  private ttsModel: string;
+  private ttsVoice: string;
+  private teacherProfileService: TeacherProfileService;
 
   constructor() {
     if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-key') {
@@ -57,10 +65,79 @@ export class OpenAIService {
         organization: process.env.OPENAI_ORGANIZATION
       });
     }
+
+    // Configure models from environment variables with fallbacks
+    this.chatModel = process.env.OPENAI_CHAT_MODEL || 'gpt-4.1-2025-04-14';
+    this.simpleModel = process.env.OPENAI_SIMPLE_MODEL || 'gpt-4.1-mini-2025-04-14';
+    this.whisperModel = process.env.OPENAI_WHISPER_MODEL || 'whisper-1';
+    this.ttsModel = process.env.OPENAI_TTS_MODEL || 'tts-1-hd';
+    this.ttsVoice = process.env.OPENAI_TTS_VOICE || 'nova';
+    
+    // Initialize teacher profile service
+    this.teacherProfileService = new TeacherProfileService();
   }
 
   /**
-   * Generate system prompt for AI teacher based on lesson context and persona
+   * Generate system prompt for AI teacher based on teacher profile and lesson context
+   */
+  private generateSystemPromptFromProfile(teacherProfile: TeacherProfile, lessonContext: LessonContext): string {
+    const { personality, teachingStyle, teachingFocus } = teacherProfile;
+    
+    // Use custom template if provided, otherwise generate dynamic one
+    if (teacherProfile.systemPromptTemplate && teacherProfile.systemPromptTemplate.length > 100) {
+      // Replace template variables in custom prompt
+      return teacherProfile.systemPromptTemplate
+        .replace(/\{lessonTitle\}/g, lessonContext.title)
+        .replace(/\{difficultyLevel\}/g, lessonContext.difficultyLevel.toString())
+        .replace(/\{scenarioType\}/g, lessonContext.scenarioType)
+        .replace(/\{objectives\}/g, lessonContext.objectives.join(', '))
+        .replace(/\{vocabulary\}/g, Object.entries(lessonContext.vocabulary).map(([word, def]) => `${word} (${def})`).join(', '))
+        .replace(/\{grammarFocus\}/g, lessonContext.grammarFocus.join(', '));
+    }
+
+    // Generate dynamic system prompt based on profile configuration
+    return `You are ${personality.name}, ${personality.title} ${personality.background}
+
+PERSONALITY & STYLE:
+- Teaching Personality: ${teachingStyle.personality} and ${teachingStyle.formality}
+- Correction Style: ${teachingStyle.correctionStyle}
+- Encouragement Level: ${teachingStyle.encouragementLevel}
+- Adaptability: ${teachingStyle.adaptability}/10 (how much you adapt to student level)
+- Specialties: ${personality.specialties.join(', ')}
+- Motivational Style: ${personality.motivationalStyle}
+
+LESSON CONTEXT:
+- Title: ${lessonContext.title}
+- Difficulty Level: ${lessonContext.difficultyLevel}/5
+- Scenario: ${lessonContext.scenarioType}
+- Learning Objectives: ${lessonContext.objectives.join(', ')}
+- Key Vocabulary: ${Object.entries(lessonContext.vocabulary).map(([word, def]) => `${word} (${def})`).join(', ')}
+- Grammar Focus: ${lessonContext.grammarFocus.join(', ')}
+
+TEACHING APPROACH:
+- Primary Focus: ${teachingFocus.primaryFocus}
+${teachingFocus.secondaryFocus ? `- Secondary Focus: ${teachingFocus.secondaryFocus}` : ''}
+- Detail Level: ${teachingFocus.detailLevel}
+- Methodology: ${teachingFocus.methodology}
+
+CHARACTERISTIC PHRASES:
+Use these phrases naturally in conversation: ${personality.catchPhrases.map(phrase => `"${phrase}"`).join(', ')}
+
+INSTRUCTIONS:
+1. Stay in character as ${personality.name} throughout the conversation
+2. Adapt your language complexity to level ${lessonContext.difficultyLevel}/5
+3. Apply your correction style: ${teachingStyle.correctionStyle}
+4. Use ${teachingStyle.encouragementLevel} level encouragement
+5. Focus primarily on ${teachingFocus.primaryFocus}${teachingFocus.secondaryFocus ? ` and secondarily on ${teachingFocus.secondaryFocus}` : ''}
+6. Guide conversation toward ${lessonContext.scenarioType} scenarios
+7. Use your characteristic teaching personality: ${teachingStyle.personality}
+8. Maintain ${teachingStyle.formality} formality level
+
+Begin the conversation in character, greeting the student and introducing the lesson scenario according to your personality and teaching style.`;
+  }
+
+  /**
+   * Generate system prompt for AI teacher based on lesson context and persona (legacy method)
    */
   private generateSystemPrompt(persona: TeacherPersona, lessonContext: LessonContext): string {
     return `You are ${persona.name}, an experienced English ${persona.role.toLowerCase()} with a ${persona.personality} personality. You speak with a ${persona.accent} accent and specialize in ${persona.specialties.join(', ')}.
@@ -90,7 +167,85 @@ Begin the conversation by greeting the student and introducing the lesson scenar
   }
 
   /**
-   * Generate AI teacher response based on conversation history
+   * Generate AI teacher response using configurable teacher profile
+   */
+  async generateTeacherResponseWithProfile(
+    userMessage: string,
+    conversationHistory: ConversationMessage[],
+    userId: string,
+    lessonContext: LessonContext
+  ): Promise<AIResponse> {
+    try {
+      // Get user's active teacher profile
+      const teacherProfile = await this.teacherProfileService.getUserActiveTeacherProfile(userId);
+      if (!teacherProfile) {
+        throw new Error('No active teacher profile found for user');
+      }
+
+      // Prepare messages for OpenAI
+      const systemPrompt = this.generateSystemPromptFromProfile(teacherProfile, lessonContext);
+      
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: 'system', content: systemPrompt },
+        ...conversationHistory.slice(-10).map(msg => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content
+        })),
+        { role: 'user', content: userMessage }
+      ];
+
+      // Generate main response using configured voice settings
+      const completion = await this.client.chat.completions.create({
+        model: this.chatModel,
+        messages,
+        max_tokens: 300,
+        temperature: 0.7,
+        presence_penalty: 0.3,
+        frequency_penalty: 0.3,
+      });
+
+      const aiMessage = completion.choices[0]?.message?.content || 
+        `I apologize, but I couldn't generate a response. Please try again.`;
+
+      // Generate corrections and feedback based on teaching style
+      const corrections = teacherProfile.teachingStyle.correctionStyle !== 'never_interrupt' 
+        ? await this.analyzeAndCorrect(userMessage, lessonContext)
+        : undefined;
+      
+      const suggestions = this.generateSuggestions(userMessage, lessonContext);
+
+      logger.info('AI teacher response generated with profile', {
+        userId,
+        profileId: teacherProfile.id,
+        profileName: teacherProfile.name,
+        userMessage: userMessage.substring(0, 100),
+        responseLength: aiMessage.length,
+        correctionsCount: corrections?.length || 0
+      });
+
+      return {
+        message: aiMessage,
+        corrections: corrections && corrections.length > 0 ? corrections : undefined,
+        suggestions
+      };
+
+    } catch (error) {
+      logger.error('Error generating AI teacher response with profile', {
+        error: (error as Error).message,
+        userId,
+        userMessage: userMessage.substring(0, 100)
+      });
+      
+      // Fallback response
+      return {
+        message: `I'm sorry, I'm having trouble responding right now. Let's continue practicing - can you tell me more about ${lessonContext.title.toLowerCase()}?`,
+        suggestions: ['Try rephrasing your message', 'Ask me about the lesson topic', 'Practice using the vocabulary words']
+      };
+    }
+  }
+
+  /**
+   * Generate AI teacher response based on conversation history (legacy method for backward compatibility)
    */
   async generateTeacherResponse(
     userMessage: string,
@@ -113,7 +268,7 @@ Begin the conversation by greeting the student and introducing the lesson scenar
 
       // Generate main response
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-4',
+        model: this.chatModel,
         messages,
         max_tokens: 300,
         temperature: 0.7,
@@ -183,7 +338,7 @@ Provide corrections in this JSON format:
 Only include corrections if there are actual errors. If the message is correct, return empty corrections array.`;
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.simpleModel,
         messages: [{ role: 'user', content: correctionPrompt }],
         max_tokens: 200,
         temperature: 0.2,
@@ -267,7 +422,7 @@ Generate a natural, engaging opening message that:
 Keep it conversational and encouraging, maximum 2-3 sentences.`;
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.simpleModel,
         messages: [{ role: 'user', content: starterPrompt }],
         max_tokens: 150,
         temperature: 0.8,
@@ -323,7 +478,7 @@ Provide evaluation in JSON format:
 }`;
 
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.simpleModel,
         messages: [{ role: 'user', content: evaluationPrompt }],
         max_tokens: 300,
         temperature: 0.3,
@@ -387,7 +542,7 @@ Provide evaluation in JSON format:
         // Transcribe using OpenAI Whisper
         const transcription = await this.client.audio.transcriptions.create({
           file: audioFile,
-          model: 'whisper-1',
+          model: this.whisperModel,
           language: 'en', // Specify English for better accuracy
         });
         
@@ -411,6 +566,57 @@ Provide evaluation in JSON format:
   /**
    * Generate simple AI response for voice conversations
    */
+  async generateContextualResponse(userText: string, context: string): Promise<string> {
+    try {
+      // Check if we're in mock mode (no real API key)
+      if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-key') {
+        logger.warn('OpenAI API key not configured - using mock AI response');
+        // Return a mock response for development
+        const mockResponses = [
+          "That's interesting! Can you tell me more about that?",
+          "I understand. What would you like to talk about next?",
+          "Great point! How do you feel about this topic?",
+          "Thanks for sharing that with me. What else is on your mind?",
+          "I see. Can you elaborate on that a bit more?",
+          "That sounds good! What's your next question?"
+        ];
+        const randomResponse = mockResponses[Math.floor(Math.random() * mockResponses.length)];
+        return randomResponse;
+      }
+
+      // Generate contextual AI response using OpenAI with teacher profile
+      const completion = await this.client.chat.completions.create({
+        model: this.simpleModel,
+        messages: [
+          {
+            role: 'system',
+            content: context
+          },
+          {
+            role: 'user',
+            content: userText
+          }
+        ],
+        max_tokens: 150,
+        temperature: 0.7
+      });
+
+      const response = completion.choices[0]?.message?.content?.trim();
+      if (!response) {
+        throw new Error('No response generated from OpenAI');
+      }
+
+      return response;
+    } catch (error) {
+      logger.error('Error generating contextual AI response', { 
+        error: (error as Error).message,
+        userText,
+        context: context.substring(0, 200) + '...'
+      });
+      throw error;
+    }
+  }
+
   async generateSimpleResponse(userText: string): Promise<string> {
     try {
       // Check if we're in mock mode (no real API key)
@@ -431,7 +637,7 @@ Provide evaluation in JSON format:
 
       // Generate real AI response using OpenAI
       const completion = await this.client.chat.completions.create({
-        model: 'gpt-3.5-turbo',
+        model: this.simpleModel,
         messages: [
           {
             role: 'system',

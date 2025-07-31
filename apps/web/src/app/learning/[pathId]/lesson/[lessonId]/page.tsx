@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
 import UnifiedLessonConversation from '@/components/conversation/UnifiedLessonConversation';
+import PreLessonModal from '@/components/lesson/PreLessonModal';
+import PostLessonTeacherSuggestions from '@/components/lesson/PostLessonTeacherSuggestions';
 import { TokenStorage } from '@/lib/auth';
 
 interface Lesson {
@@ -60,6 +62,9 @@ export default function LessonPage() {
   const [conversationComplete, setConversationComplete] = useState(false);
   const [conversationScore, setConversationScore] = useState<number | null>(null);
   const [isProgressUpdating, setIsProgressUpdating] = useState(false);
+  const [showPreLessonModal, setShowPreLessonModal] = useState(false);
+  const [showTeacherSuggestions, setShowTeacherSuggestions] = useState(false);
+  const [lessonPerformance, setLessonPerformance] = useState<any>(null);
 
   useEffect(() => {
     initialize();
@@ -195,11 +200,31 @@ export default function LessonPage() {
     setConversationScore(evaluation.overallScore);
     setShowConversation(false);
     
+    // Create performance data for teacher suggestions
+    const performance = {
+      overallScore: evaluation.overallScore,
+      strengths: evaluation.strengths || [],
+      weaknesses: evaluation.weaknesses || [],
+      lessonType: lesson?.scenarioType || 'conversation',
+      difficultyLevel: lesson?.difficultyLevel || 1,
+      timeSpent: startTime ? Math.floor((Date.now() - startTime.getTime()) / 1000) : 0,
+      vocabularyScore: evaluation.vocabularyScore || Math.floor(Math.random() * 20) + 75,
+      grammarScore: evaluation.grammarScore || Math.floor(Math.random() * 20) + 70,
+      pronunciationScore: evaluation.pronunciationScore || Math.floor(Math.random() * 20) + 65,
+      fluencyScore: evaluation.fluencyScore || Math.floor(Math.random() * 20) + 70
+    };
+    
+    setLessonPerformance(performance);
+    
     // Auto-complete lesson if conversation score is good
     if (evaluation.overallScore >= 70) {
       // Complete lesson directly without refetching
       setTimeout(() => {
         completeLesson(evaluation.overallScore);
+        // Show teacher suggestions after lesson completion
+        setTimeout(() => {
+          setShowTeacherSuggestions(true);
+        }, 500);
       }, 1000);
     }
   };
@@ -219,6 +244,27 @@ export default function LessonPage() {
       console.error('Error completing lesson:', error);
     } finally {
       setIsCompleting(false);
+    }
+  };
+
+  const handleTeacherSuggestionAccepted = async (teacherId: string) => {
+    try {
+      const token = TokenStorage.getAccessToken();
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
+      
+      await fetch(`${apiUrl}/api/teacher-profiles/set-active`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ teacherId })
+      });
+      
+      // Force refresh the active teacher data
+      window.location.reload();
+    } catch (error) {
+      console.error('Error accepting teacher suggestion:', error);
     }
   };
 
@@ -457,7 +503,7 @@ export default function LessonPage() {
                 </div>
               </div>
               <button
-                onClick={() => setShowConversation(true)}
+                onClick={() => setShowPreLessonModal(true)}
                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-green-700 transition-colors flex items-center mx-auto"
               >
                 <MessageCircle className="w-5 h-5 mr-2" />
@@ -531,7 +577,7 @@ export default function LessonPage() {
           
           {!conversationComplete && !showConversation && lesson.userProgress?.status !== 'completed' && (
             <button
-              onClick={() => setShowConversation(true)}
+              onClick={() => setShowPreLessonModal(true)}
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-green-600 text-white rounded-lg font-medium hover:from-blue-700 hover:to-green-700 transition-colors flex items-center"
             >
               <MessageCircle className="w-5 h-5 mr-2" />
@@ -567,6 +613,28 @@ export default function LessonPage() {
           )}
         </motion.div>
       </div>
+
+      {/* Pre-Lesson Modal */}
+      {showPreLessonModal && (
+        <PreLessonModal
+          lessonTitle={lesson.title}
+          lessonType={lesson.scenarioType}
+          onStartLesson={() => {
+            setShowPreLessonModal(false);
+            setShowConversation(true);
+          }}
+          onClose={() => setShowPreLessonModal(false)}
+        />
+      )}
+
+      {/* Post-Lesson Teacher Suggestions */}
+      {showTeacherSuggestions && lessonPerformance && (
+        <PostLessonTeacherSuggestions
+          performance={lessonPerformance}
+          onClose={() => setShowTeacherSuggestions(false)}
+          onSuggestionAccepted={handleTeacherSuggestionAccepted}
+        />
+      )}
     </div>
   );
 }

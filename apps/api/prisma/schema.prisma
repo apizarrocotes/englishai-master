@@ -24,10 +24,12 @@ model User {
   updatedAt        DateTime @updatedAt @map("updated_at")
 
   // Relations
-  learningProfile    LearningProfile?
-  conversationSessions ConversationSession[]
-  userProgress         UserProgress[]
-  learningAnalytics    LearningAnalytics[]
+  learningProfile       LearningProfile?
+  conversationSessions  ConversationSession[]
+  userProgress          UserProgress[]
+  learningAnalytics     LearningAnalytics[]
+  teacherPreferences    UserTeacherPreferences?
+  customTeacherProfiles TeacherProfile[]
 
   @@map("users")
 }
@@ -176,6 +178,70 @@ model LearningAnalytics {
 
   @@unique([userId, date])
   @@map("learning_analytics")
+}
+
+// AI Teacher Profiles System
+model TeacherProfile {
+  id                    String   @id @default(cuid())
+  userId                String?  @map("user_id") // null for system profiles
+  isSystemProfile       Boolean  @default(false) @map("is_system_profile")
+  name                  String
+  description           String
+  
+  // Personality Configuration
+  personalityName       String   @map("personality_name")
+  personalityTitle      String   @map("personality_title")
+  personalityBackground String   @map("personality_background")
+  personalitySpecialties String[] @map("personality_specialties")
+  personalityCatchPhrases String[] @map("personality_catch_phrases")
+  personalityMotivationalStyle String @map("personality_motivational_style")
+  personalityAvatarUrl  String   @map("personality_avatar_url")
+  personalityBannerColor String  @map("personality_banner_color")
+  
+  // Voice Configuration
+  voiceModel            String   @default("nova") @map("voice_model") // alloy, echo, fable, onyx, nova, shimmer
+  voiceSpeed            Decimal  @default(1.0) @map("voice_speed") @db.Decimal(3, 2)
+  voiceAccent           String   @default("american") @map("voice_accent")
+  
+  // Teaching Style
+  teachingPersonality   String   @default("friendly") @map("teaching_personality")
+  teachingFormality     String   @default("professional") @map("teaching_formality")
+  teachingCorrectionStyle String @default("immediate") @map("teaching_correction_style")
+  teachingEncouragementLevel String @default("moderate") @map("teaching_encouragement_level")
+  teachingAdaptability  Int      @default(7) @map("teaching_adaptability")
+  
+  // Teaching Focus
+  teachingPrimaryFocus  String   @default("conversation") @map("teaching_primary_focus")
+  teachingSecondaryFocus String? @map("teaching_secondary_focus")
+  teachingDetailLevel   String   @default("intermediate") @map("teaching_detail_level")
+  teachingMethodology   String   @default("communicative") @map("teaching_methodology")
+  
+  // System Configuration
+  systemPromptTemplate  String   @map("system_prompt_template")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  creator             User?                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userPreferences     UserTeacherPreferences[]
+  
+  @@map("teacher_profiles")
+}
+
+model UserTeacherPreferences {
+  id                String   @id @default(cuid())
+  userId            String   @unique @map("user_id")
+  selectedProfileId String   @map("selected_profile_id")
+  customizations    Json?    // Store any user-specific customizations
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  selectedProfile TeacherProfile @relation(fields: [selectedProfileId], references: [id])
+  
+  @@map("user_teacher_preferences")
 }
 
 // Indexes for performance

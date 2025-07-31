@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Brain, LogOut, User } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
 import AuthButtons from '@/components/ui/AuthButtons';
+import TeacherSelector from '@/components/navigation/TeacherSelector';
 
 interface NavbarProps {
   transparent?: boolean;
@@ -51,6 +52,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Navigation Items */}
           {isAuthenticated && user ? (
             <div className="flex items-center space-x-4">
+              {/* AI Teacher Selector */}
+              <TeacherSelector />
+              
               {/* User Info */}
               <div className="flex items-center space-x-3">
                 <div className="flex items-center space-x-2">

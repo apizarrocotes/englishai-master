@@ -29,10 +29,13 @@ interface TTSResult {
 }
 
 export class VoiceService {
-  private openai: OpenAI;
+  private openai?: OpenAI;
   private conversationService: ConversationService;
   private learningService: LearningService;
   private activeSessions: Map<string, VoiceSession> = new Map();
+  private whisperModel: string;
+  private ttsModel: string;
+  private ttsVoice: string;
 
   constructor() {
     if (process.env.OPENAI_API_KEY) {
@@ -44,6 +47,11 @@ export class VoiceService {
     }
     this.conversationService = new ConversationService();
     this.learningService = new LearningService();
+    
+    // Configure models from environment variables with fallbacks
+    this.whisperModel = process.env.OPENAI_WHISPER_MODEL || 'whisper-1';
+    this.ttsModel = process.env.OPENAI_TTS_MODEL || 'tts-1-hd';
+    this.ttsVoice = process.env.OPENAI_TTS_VOICE || 'nova';
   }
 
   async createVoiceSession(userId: string, lessonId: string): Promise<VoiceSession> {
@@ -54,12 +62,7 @@ export class VoiceService {
       const lesson = await this.learningService.getLessonById(lessonId);
       
       // Create conversation session
-      const conversation = await this.conversationService.createConversationSession({
-        userId,
-        lessonId,
-        scenarioType: lesson.scenarioType,
-        isVoiceEnabled: true
-      });
+      const conversation = await this.conversationService.getConversationSession(userId);
 
       const session: VoiceSession = {
         id: sessionId,
@@ -139,7 +142,7 @@ export class VoiceService {
       
       logger.info('Audio transcription completed', {
         sessionId,
-        transcription: transcription.text,
+        transcription: transcription.transcription,
         confidence: transcription.confidence
       });
 
@@ -176,7 +179,7 @@ export class VoiceService {
 
       const transcription = await this.openai.audio.transcriptions.create({
         file: audioFile,
-        model: 'whisper-1',
+        model: this.whisperModel,
         language: 'en',
         response_format: 'verbose_json'
       });
@@ -205,11 +208,11 @@ export class VoiceService {
       }
 
       // Send message through conversation service
-      const response = await this.conversationService.sendMessage(
-        session.conversationId,
-        userMessage,
-        { isVoiceInput: true }
-      );
+      const response = await this.conversationService.sendMessage({
+        sessionId: session.conversationId,
+        userId: session.userId,
+        message: userMessage
+      });
 
       logger.info('AI response generated for voice session', {
         sessionId,
@@ -237,19 +240,43 @@ export class VoiceService {
         throw new Error('OpenAI API not configured');
       }
 
+      logger.info('VoiceService.textToSpeech - starting TTS', {
+        voice: voice,
+        speed: speed,
+        textLength: text.length,
+        textPreview: text.substring(0, 50) + '...'
+      });
+
       // Validate voice option
       const validVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+      const originalVoice = voice;
       if (!validVoices.includes(voice)) {
         voice = 'alloy';
+        logger.warn('Invalid voice provided, using fallback', {
+          originalVoice,
+          fallbackVoice: voice
+        });
       }
 
       // Validate speed
+      const originalSpeed = speed;
       if (speed < 0.25 || speed > 4.0) {
         speed = 1.0;
+        logger.warn('Invalid speed provided, using fallback', {
+          originalSpeed,
+          fallbackSpeed: speed
+        });
       }
 
+      logger.info('VoiceService.textToSpeech - calling OpenAI TTS', {
+        model: this.ttsModel,
+        voice: voice,
+        speed: speed,
+        validVoices: validVoices
+      });
+
       const mp3 = await this.openai.audio.speech.create({
-        model: 'tts-1-hd',
+        model: this.ttsModel,
         voice: voice as any,
         input: text,
         speed: speed,
@@ -260,11 +287,12 @@ export class VoiceService {
       const buffer = Buffer.from(await mp3.arrayBuffer());
       const audioBase64 = buffer.toString('base64');
 
-      logger.info('Text to speech conversion completed', {
+      logger.info('VoiceService.textToSpeech - conversion completed successfully', {
         textLength: text.length,
-        voice,
-        speed,
-        audioSize: buffer.length
+        finalVoice: voice,
+        finalSpeed: speed,
+        audioSize: buffer.length,
+        ttsModel: this.ttsModel
       });
 
       return {
@@ -291,7 +319,7 @@ export class VoiceService {
     try {
       // End conversation session if exists
       if (session.conversationId) {
-        await this.conversationService.endConversation(session.conversationId);
+        await this.conversationService.endConversation(session.conversationId, session.userId);
       }
 
       // Clean up session

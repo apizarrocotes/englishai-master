@@ -21,6 +21,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { TokenStorage } from '@/lib/auth';
+import { useActiveTeacher } from '@/hooks/useActiveTeacher';
 
 interface Message {
   id: string;
@@ -91,6 +92,7 @@ export default function UnifiedLessonConversation({
   onComplete,
   onClose
 }: UnifiedLessonConversationProps) {
+  const { activeTeacher, loading: teacherLoading } = useActiveTeacher();
   const [mode, setMode] = useState<'chat' | 'voice'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -109,6 +111,12 @@ export default function UnifiedLessonConversation({
   // Session tracking
   const [sessionStartTime] = useState(new Date());
   const [messageCount, setMessageCount] = useState(0);
+  
+  // Micro-interaction states
+  const [typingIndicator, setTypingIndicator] = useState(false);
+  const [messageAnimations, setMessageAnimations] = useState<Record<string, boolean>>({});
+  const [buttonHover, setButtonHover] = useState<string | null>(null);
+  const [inputFocus, setInputFocus] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -166,19 +174,23 @@ export default function UnifiedLessonConversation({
   const generateContextualGreeting = (): string => {
     const { scenarioType, title, learningObjectives } = lessonData;
     
+    // Use teacher's name and persona if available
+    const teacherName = activeTeacher?.name || 'your AI English teacher';
+    const catchPhrase = activeTeacher?.personality?.catchPhrases?.[0] || '';
+    
     const greetings = {
-      'Restaurant Ordering': `Hello! Welcome to our restaurant. I'm your AI server and I'm here to help you practice ordering in English. Today we'll focus on "${title}". Are you ready to start practicing?`,
-      'Hotel Check-in': `Good day! Welcome to our hotel. I'm here to help you practice check-in procedures in English. We'll be working on "${title}" today. How may I assist you?`,
-      'Job Interview': `Hello! I'm your AI interviewer today. We'll be practicing interview skills for "${title}". Are you ready to begin the interview?`,
-      'Shopping': `Welcome to our store! I'm your AI sales assistant. Today we're practicing "${title}". What can I help you find?`,
-      'Medical Appointment': `Hello, I'm your AI medical assistant. We'll be practicing "${title}" today. How are you feeling?`,
-      'Business Meeting': `Good morning! I'm your AI meeting facilitator. Today we'll practice "${title}". Shall we begin our discussion?`,
-      'Travel Planning': `Hello! I'm your AI travel consultant. Today we'll work on "${title}". Where would you like to go?`,
-      'Phone Conversation': `Hello! I'm calling to practice "${title}" with you. Can you hear me clearly?`
+      'Restaurant Ordering': `Hello! Welcome to our restaurant. I'm ${teacherName} and I'm here to help you practice ordering in English. Today we'll focus on "${title}". ${catchPhrase} Are you ready to start practicing?`,
+      'Hotel Check-in': `Good day! Welcome to our hotel. I'm ${teacherName}. I'm here to help you practice check-in procedures in English. We'll be working on "${title}" today. How may I assist you?`,
+      'Job Interview': `Hello! I'm ${teacherName}, your interviewer today. We'll be practicing interview skills for "${title}". ${catchPhrase} Are you ready to begin the interview?`,
+      'Shopping': `Welcome to our store! I'm ${teacherName}, your sales assistant. Today we're practicing "${title}". What can I help you find?`,
+      'Medical Appointment': `Hello, I'm ${teacherName}, your medical assistant. We'll be practicing "${title}" today. How are you feeling?`,
+      'Business Meeting': `Good morning! I'm ${teacherName}, your meeting facilitator. Today we'll practice "${title}". Shall we begin our discussion?`,
+      'Travel Planning': `Hello! I'm ${teacherName}, your travel consultant. Today we'll work on "${title}". Where would you like to go?`,
+      'Phone Conversation': `Hello! I'm ${teacherName} calling to practice "${title}" with you. Can you hear me clearly?`
     };
     
     return greetings[scenarioType as keyof typeof greetings] || 
-           `Hello! I'm your AI English teacher. Today we'll be practicing "${title}". ${learningObjectives[0] || 'Let\'s start our conversation!'}`;
+           `Hello! I'm ${teacherName}. Today we'll be practicing "${title}". ${catchPhrase} ${learningObjectives[0] || 'Let\'s start our conversation!'}`;
   };
 
   const initializeSpeechRecognition = () => {
@@ -258,21 +270,33 @@ export default function UnifiedLessonConversation({
       const token = TokenStorage.getAccessToken();
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://89.58.17.78:3001';
       
+      const voiceConfig = {
+        text: text,
+        voice: activeTeacher?.voiceConfig?.voice || 'nova',
+        speed: activeTeacher?.voiceConfig?.speed || 0.95
+      };
+
+      console.log('🔊 TTS Configuration:', {
+        teacherName: activeTeacher?.name,
+        voiceConfig,
+        activeTeacher: activeTeacher ? 'loaded' : 'not loaded'
+      });
+
       const ttsResponse = await fetch(`${apiUrl}/api/voice/tts`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          text: text,
-          voice: 'nova',
-          speed: 0.95
-        }),
+        body: JSON.stringify(voiceConfig),
       });
+
+      console.log('📡 TTS Response status:', ttsResponse.status);
+      console.log('📡 TTS Response ok:', ttsResponse.ok);
 
       if (ttsResponse.ok) {
         const ttsData = await ttsResponse.json();
+        console.log('✅ OpenAI TTS successful, using OpenAI audio');
         const audioBlob = new Blob([Uint8Array.from(atob(ttsData.data.audio), c => c.charCodeAt(0))], { type: 'audio/mp3' });
         const audioUrl = URL.createObjectURL(audioBlob);
         
@@ -292,12 +316,16 @@ export default function UnifiedLessonConversation({
         
         await audio.play();
         return;
+      } else {
+        const errorText = await ttsResponse.text();
+        console.error('❌ OpenAI TTS failed:', ttsResponse.status, errorText);
       }
     } catch (error) {
       console.warn('OpenAI TTS failed, falling back to browser synthesis:', error);
     }
 
     // Fallback to browser speech synthesis
+    console.warn('⚠️ Falling back to browser speech synthesis (Web Speech API)');
     try {
       if ('speechSynthesis' in window) {
         setIsPlayingAudio(true);
@@ -346,8 +374,12 @@ export default function UnifiedLessonConversation({
 
   const sendMessageToAI = async (userText: string) => {
     setIsProcessing(true);
+    setTypingIndicator(true);
     
     try {
+      // Add a slight delay for better UX perception
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
       // Generate contextual AI response based on lesson content
       const aiResponse = await generateContextualAIResponse(userText);
       
@@ -360,7 +392,9 @@ export default function UnifiedLessonConversation({
         suggestions: aiResponse.suggestions
       };
       
+      // Add message with animation trigger
       setMessages(prev => [...prev, aiMessage]);
+      setMessageAnimations(prev => ({ ...prev, [aiMessage.id]: true }));
       setMessageCount(prev => prev + 1);
       
       // Generate speech for AI response in voice mode
@@ -376,6 +410,7 @@ export default function UnifiedLessonConversation({
       setError('Failed to get AI response. Please try again.');
     } finally {
       setIsProcessing(false);
+      setTypingIndicator(false);
     }
   };
 
@@ -398,7 +433,8 @@ export default function UnifiedLessonConversation({
         body: JSON.stringify({
           message: userMessage,
           lessonData: lessonData,
-          conversationHistory: messages.slice(-5) // Send last 5 messages for context
+          conversationHistory: messages.slice(-5), // Send last 5 messages for context
+          teacherProfile: activeTeacher // Send the active teacher profile for persona
         }),
       });
 
@@ -487,8 +523,15 @@ export default function UnifiedLessonConversation({
       timestamp: new Date()
     };
     
+    // Add user message with animation trigger
     setMessages(prev => [...prev, userMessage]);
+    setMessageAnimations(prev => ({ ...prev, [userMessage.id]: true }));
     setMessageCount(prev => prev + 1);
+    
+    // Focus back to input for continuous typing
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
     
     await sendMessageToAI(userText);
   };
@@ -595,11 +638,17 @@ export default function UnifiedLessonConversation({
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <AnimatePresence>
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <motion.div
               key={message.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              transition={{ 
+                duration: 0.3,
+                delay: index === messages.length - 1 ? 0.1 : 0,
+                ease: "easeOut"
+              }}
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`max-w-[80%] flex items-start space-x-2 ${
@@ -618,18 +667,22 @@ export default function UnifiedLessonConversation({
                 </div>
                 
                 <div className="space-y-2">
-                  <div className={`rounded-2xl px-4 py-2 ${
-                    message.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-900'
-                  }`}>
+                  <motion.div 
+                    className={`rounded-2xl px-4 py-2 cursor-pointer transition-all duration-200 ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg'
+                        : 'bg-gray-100 text-gray-900 hover:bg-gray-200 hover:shadow-md'
+                    }`}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
                     <p className="text-sm">{message.content}</p>
                     <p className={`text-xs mt-1 ${
                       message.role === 'user' ? 'text-blue-100' : 'text-gray-500'
                     }`}>
                       {formatTimestamp(message.timestamp)}
                     </p>
-                  </div>
+                  </motion.div>
                   
                   {/* Corrections */}
                   {showCorrections && message.corrections && message.corrections.length > 0 && (
@@ -660,20 +713,51 @@ export default function UnifiedLessonConversation({
           ))}
         </AnimatePresence>
         
-        {isProcessing && (
-          <div className="flex justify-start">
+        {(isProcessing || typingIndicator) && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="flex justify-start"
+          >
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+              <motion.div 
+                className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center"
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              >
                 <Bot className="w-4 h-4 text-green-600" />
-              </div>
+              </motion.div>
               <div className="bg-gray-100 rounded-2xl px-4 py-2">
                 <div className="flex items-center space-x-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
-                  <span className="text-sm text-gray-600">Thinking...</span>
+                  {typingIndicator ? (
+                    <div className="flex space-x-1">
+                      <motion.div
+                        className="w-2 h-2 bg-gray-500 rounded-full"
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0 }}
+                      />
+                      <motion.div
+                        className="w-2 h-2 bg-gray-500 rounded-full"
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0.1 }}
+                      />
+                      <motion.div
+                        className="w-2 h-2 bg-gray-500 rounded-full"
+                        animate={{ y: [0, -8, 0] }}
+                        transition={{ duration: 0.6, repeat: Infinity, delay: 0.2 }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-gray-600" />
+                      <span className="text-sm text-gray-600">Thinking...</span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
-          </div>
+          </motion.div>
         )}
         
         <div ref={messagesEndRef} />
@@ -693,44 +777,90 @@ export default function UnifiedLessonConversation({
       <div className="border-t p-4">
         <div className="flex items-center space-x-3">
           {mode === 'voice' && (
-            <button
+            <motion.button
               onClick={isRecording ? stopRecording : startRecording}
               disabled={isProcessing}
-              className={`p-3 rounded-full transition-colors ${
+              className={`p-3 rounded-full transition-all duration-200 ${
                 isRecording 
-                  ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
+                  ? 'bg-red-600 hover:bg-red-700 text-white' 
                   : 'bg-blue-600 hover:bg-blue-700 text-white'
               } disabled:opacity-50`}
+              whileHover={isProcessing ? {} : { scale: 1.1 }}
+              whileTap={isProcessing ? {} : { scale: 0.9 }}
+              animate={{
+                scale: isRecording ? [1, 1.1, 1] : 1,
+                boxShadow: isRecording 
+                  ? '0 0 20px rgba(239, 68, 68, 0.6)'
+                  : '0 4px 15px rgba(59, 130, 246, 0.3)'
+              }}
+              transition={{
+                scale: {
+                  duration: 1,
+                  repeat: isRecording ? Infinity : 0,
+                  ease: "easeInOut"
+                }
+              }}
             >
               {isRecording ? (
                 <MicOff className="w-5 h-5" />
               ) : (
                 <Mic className="w-5 h-5" />
               )}
-            </button>
+            </motion.button>
           )}
 
           <div className="flex-1">
-            <input
+            <motion.input
               ref={inputRef}
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && sendTextMessage()}
+              onFocus={() => setInputFocus(true)}
+              onBlur={() => setInputFocus(false)}
               placeholder={mode === 'voice' ? "Voice mode active - click mic to speak" : "Type your message..."}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className={`w-full px-4 py-2 border border-gray-300 rounded-lg transition-all duration-200 ${
+                inputFocus 
+                  ? 'ring-2 ring-blue-500 border-transparent shadow-lg' 
+                  : 'focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+              }`}
               disabled={isProcessing || (mode === 'voice' && isRecording)}
+              whileFocus={{ scale: 1.02 }}
+              animate={{ 
+                borderColor: inputFocus ? '#3B82F6' : '#D1D5DB',
+                boxShadow: inputFocus ? '0 10px 25px rgba(59, 130, 246, 0.1)' : '0 1px 3px rgba(0, 0, 0, 0.1)'
+              }}
             />
           </div>
 
           {mode === 'chat' && (
-            <button
+            <motion.button
               onClick={sendTextMessage}
               disabled={!inputMessage.trim() || isProcessing}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`px-4 py-2 rounded-lg transition-all duration-200 ${
+                !inputMessage.trim() || isProcessing
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-lg'
+              }`}
+              whileHover={!inputMessage.trim() || isProcessing ? {} : { scale: 1.05 }}
+              whileTap={!inputMessage.trim() || isProcessing ? {} : { scale: 0.95 }}
+              animate={{
+                backgroundColor: !inputMessage.trim() || isProcessing ? '#D1D5DB' : '#16A34A'
+              }}
             >
-              <Send className="w-5 h-5" />
-            </button>
+              <motion.div
+                animate={{
+                  rotate: isProcessing ? 360 : 0
+                }}
+                transition={{
+                  duration: 1,
+                  repeat: isProcessing ? Infinity : 0,
+                  ease: "linear"
+                }}
+              >
+                <Send className="w-5 h-5" />
+              </motion.div>
+            </motion.button>
           )}
         </div>
 

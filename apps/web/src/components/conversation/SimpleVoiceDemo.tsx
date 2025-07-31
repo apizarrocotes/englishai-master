@@ -238,7 +238,7 @@ export default function SimpleVoiceDemo({
         },
         body: JSON.stringify({
           text: text,
-          voice: 'nova',
+          voice: 'nova', // This is handled by backend .env config
           speed: 0.95
         }),
       });

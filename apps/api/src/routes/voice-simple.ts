@@ -80,7 +80,7 @@ router.post('/lesson-chat',
   authenticateToken,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { message, lessonData, conversationHistory = [] } = req.body;
+      const { message, lessonData, conversationHistory = [], teacherProfile } = req.body;
       
       if (!message || !lessonData) {
         return res.status(400).json({
@@ -89,8 +89,9 @@ router.post('/lesson-chat',
         });
       }
 
-      // Generate contextual AI response based on lesson content using simple response method
-      const aiResponse = await openaiService.generateSimpleResponse(message);
+      // Generate contextual AI response using teacher profile and lesson content
+      const contextPrompt = generateLessonContextPrompt(lessonData, conversationHistory, message, teacherProfile);
+      const aiResponse = await openaiService.generateContextualResponse(message, contextPrompt);
       
       // Simple grammar/vocabulary corrections (mock for now)
       const corrections = generateSimpleCorrections(message, lessonData);
@@ -113,10 +114,27 @@ router.post('/lesson-chat',
 );
 
 // Helper function to generate lesson-specific context
-function generateLessonContextPrompt(lessonData: any, history: any[], currentMessage: string): string {
+function generateLessonContextPrompt(lessonData: any, history: any[], currentMessage: string, teacherProfile?: any): string {
   const { title, scenarioType, learningObjectives, vocabulary, grammarFocus } = lessonData;
   
-  let context = `You are an AI English teacher helping a student practice "${title}" in a ${scenarioType} scenario. `;
+  // Use teacher profile if available
+  let context = '';
+  if (teacherProfile) {
+    context = `You are ${teacherProfile.name} (${teacherProfile.personality.title}), ${teacherProfile.description}. `;
+    context += `${teacherProfile.systemPromptTemplate} `;
+    
+    // Add teacher's personality traits
+    if (teacherProfile.personality.catchPhrases && teacherProfile.personality.catchPhrases.length > 0) {
+      context += `Your typical phrases include: "${teacherProfile.personality.catchPhrases.join('", "')}" `;
+    }
+    
+    // Add teaching style information
+    context += `Your teaching style is ${teacherProfile.teachingStyle.personality} with ${teacherProfile.teachingStyle.formality} formality. `;
+    context += `Your primary focus is ${teacherProfile.teachingFocus.primaryFocus}. `;
+    context += `Today you are helping a student practice "${title}" in a ${scenarioType} scenario. `;
+  } else {
+    context = `You are an AI English teacher helping a student practice "${title}" in a ${scenarioType} scenario. `;
+  }
   
   // Add learning objectives
   if (learningObjectives && learningObjectives.length > 0) {

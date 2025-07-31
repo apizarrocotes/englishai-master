@@ -12,10 +12,11 @@ import {
   Target,
   Clock,
   CheckCircle,
-  Info
+  Info,
+  AlertCircle
 } from 'lucide-react';
-import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
-import VoiceConversation from '@/components/conversation/VoiceConversation';
+import { useUser, useIsAuthenticated, useAuthActions, useAuthLoading } from '@/stores/authStore';
+import SimpleVoiceDemo from '@/components/conversation/SimpleVoiceDemo';
 
 interface DemoLessonData {
   id: string;
@@ -32,6 +33,7 @@ export default function VoiceDemoPage() {
   const router = useRouter();
   const user = useUser();
   const isAuthenticated = useIsAuthenticated();
+  const isAuthLoading = useAuthLoading();
   const { initialize } = useAuthActions();
   
   const [currentStep, setCurrentStep] = useState<'intro' | 'practice' | 'complete'>('intro');
@@ -73,9 +75,14 @@ export default function VoiceDemoPage() {
   }, [initialize]);
 
   useEffect(() => {
-    if (!isAuthenticated && user === null) {
-      router.push('/auth');
-    }
+    // Add timeout for initialization to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (!isAuthenticated && user === null) {
+        router.push('/auth');
+      }
+    }, 3000); // Wait 3 seconds before redirecting
+
+    return () => clearTimeout(timeout);
   }, [isAuthenticated, user, router]);
 
   const handleStartLesson = () => {
@@ -278,7 +285,7 @@ export default function VoiceDemoPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Voice Conversation Component */}
         <div className="lg:col-span-3">
-          <VoiceConversation
+          <SimpleVoiceDemo
             lessonId={demoLesson.id}
             scenarioType={demoLesson.scenarioType}
             onMessageSent={handleMessageSent}
@@ -394,10 +401,41 @@ export default function VoiceDemoPage() {
     </div>
   );
 
-  if (!isAuthenticated || !user) {
+  // Show loading only while auth is loading, but not indefinitely
+  if (isAuthLoading && !isAuthenticated && !user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If not authenticated and not loading, show demo anyway but with limited functionality
+  if (!isAuthenticated && !user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+            <div className="flex items-center">
+              <AlertCircle className="w-6 h-6 text-yellow-600 mr-3" />
+              <div>
+                <h3 className="text-lg font-medium text-yellow-800">Authentication Required</h3>
+                <p className="text-yellow-700 mt-1">
+                  Please log in to access the full voice conversation demo.
+                </p>
+                <button
+                  onClick={() => router.push('/auth')}
+                  className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+                >
+                  Go to Login
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

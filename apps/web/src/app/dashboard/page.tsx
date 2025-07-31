@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { LogOut, User, BookOpen, MessageCircle, TrendingUp } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
+import TeacherHero from '@/components/dashboard/TeacherHero';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -91,7 +92,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="mb-8"
+          className="mb-6"
         >
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
             Welcome back, {user.name.split(' ')[0]}! 👋
@@ -100,6 +101,9 @@ export default function DashboardPage() {
             Ready to continue your English learning journey?
           </p>
         </motion.div>
+
+        {/* AI Teacher Hero Section */}
+        <TeacherHero />
 
         {/* Dashboard Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">

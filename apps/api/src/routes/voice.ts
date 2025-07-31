@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { VoiceService } from '@/services/VoiceService';
 import { authenticateToken } from '@/middleware/auth';
 import { logger } from '@/utils/logger';
-import { WebSocket } from 'ws';
+// import { WebSocket } from 'ws';
 
 const router = Router();
 const voiceService = new VoiceService();
@@ -20,7 +20,7 @@ async function handleAudioData(ws: any, message: any, sessionId: string) {
   }
 }
 
-async function handleAudioEnd(ws: WebSocket, sessionId: string) {
+async function handleAudioEnd(ws: any, sessionId: string) {
   try {
     // Finalize audio processing and get transcription
     const result = await voiceService.finalizeAudioProcessing(sessionId);
@@ -53,7 +53,7 @@ async function handleAudioEnd(ws: WebSocket, sessionId: string) {
   }
 }
 
-async function handleTextMessage(ws: WebSocket, message: any, sessionId: string) {
+async function handleTextMessage(ws: any, message: any, sessionId: string) {
   try {
     // Generate AI response for text input
     const aiResponse = await voiceService.generateAIResponse(sessionId, message.text);
@@ -80,12 +80,26 @@ router.post('/tts', authenticateToken, async (req, res, next) => {
   try {
     const { text, voice = 'alloy', speed = 1.0 } = req.body;
     
+    // Debug logging
+    logger.info('TTS endpoint - processing request', {
+      text: text ? `${text.substring(0, 50)}...` : 'empty',
+      voice,
+      speed,
+      bodyKeys: Object.keys(req.body)
+    });
+    
     if (!text) {
       return res.status(400).json({
         success: false,
         error: 'Text is required'
       });
     }
+    
+    logger.info('TTS endpoint - calling voiceService.textToSpeech', {
+      voice,
+      speed,
+      textLength: text.length
+    });
     
     const result = await voiceService.textToSpeech(text, voice, speed);
     

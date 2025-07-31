@@ -16,8 +16,9 @@ import { userRoutes } from '@/routes/users';
 import { conversationRoutes } from '@/routes/conversations';
 import { learningRoutes } from '@/routes/learning';
 import { analyticsRoutes } from '@/routes/analytics';
-// import { voiceRoutes } from '@/routes/voice';
+import { voiceRoutes } from '@/routes/voice';
 import { voiceSimpleRoutes } from '@/routes/voice-simple';
+import teacherProfileRoutes from '@/routes/teacher-profiles';
 // import { setupSocketHandlers } from '@/services/socket';
 // import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
@@ -187,7 +188,9 @@ app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
-// app.use('/api/voice', voiceRoutes);
+app.use('/api/teacher-profiles', teacherProfileRoutes);
+app.use('/api/voice', voiceRoutes);
+// Also keep voice-simple routes for other endpoints
 app.use('/api/voice', voiceSimpleRoutes);
 
 // Socket.IO setup
