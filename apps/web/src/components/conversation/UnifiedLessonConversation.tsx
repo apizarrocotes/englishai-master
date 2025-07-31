@@ -368,12 +368,8 @@ export default function UnifiedLessonConversation({
         generateSpeechForMessage(aiResponse.text);
       }
       
-      // Check if conversation should end
-      if (messageCount >= 10) { // Example: end after 10+ exchanges
-        setTimeout(() => {
-          endConversation();
-        }, 2000);
-      }
+      // Check if conversation should end (but don't auto-end, let user decide)
+      // Removed auto-end to prevent unwanted API calls
       
     } catch (error) {
       console.error('Error getting AI response:', error);

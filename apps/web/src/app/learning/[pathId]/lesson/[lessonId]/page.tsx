@@ -59,6 +59,7 @@ export default function LessonPage() {
   const [showConversation, setShowConversation] = useState(false);
   const [conversationComplete, setConversationComplete] = useState(false);
   const [conversationScore, setConversationScore] = useState<number | null>(null);
+  const [isProgressUpdating, setIsProgressUpdating] = useState(false);
 
   useEffect(() => {
     initialize();
@@ -80,8 +81,8 @@ export default function LessonPage() {
     // Start timer when component mounts
     setStartTime(new Date());
     
-    // Update progress to in_progress if not already completed
-    if (lesson && lesson.userProgress?.status !== 'completed') {
+    // Update progress to in_progress only if it's not already in_progress or completed
+    if (lesson && lesson.userProgress?.status !== 'completed' && lesson.userProgress?.status !== 'in_progress') {
       updateProgress('in_progress');
     }
   }, [lesson]);
@@ -143,7 +144,14 @@ export default function LessonPage() {
   };
 
   const updateProgress = async (status: string, score?: number) => {
+    // Prevent multiple simultaneous progress updates
+    if (isProgressUpdating) {
+      console.log('Progress update already in progress, skipping...');
+      return;
+    }
+
     try {
+      setIsProgressUpdating(true);
       const token = TokenStorage.getAccessToken();
       const timeSpent = startTime ? Math.floor((Date.now() - startTime.getTime()) / 1000) : 0;
       
@@ -177,6 +185,8 @@ export default function LessonPage() {
       }
     } catch (error) {
       console.error('Error updating progress:', error);
+    } finally {
+      setIsProgressUpdating(false);
     }
   };
 
@@ -187,9 +197,8 @@ export default function LessonPage() {
     
     // Auto-complete lesson if conversation score is good
     if (evaluation.overallScore >= 70) {
-      // Refresh lesson data to get updated progress from backend
+      // Complete lesson directly without refetching
       setTimeout(() => {
-        fetchLesson();
         completeLesson(evaluation.overallScore);
       }, 1000);
     }
