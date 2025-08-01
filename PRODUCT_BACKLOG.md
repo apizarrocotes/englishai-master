@@ -11,6 +11,18 @@ This document contains the product backlog with planned features, improvements, 
 ### 🚀 Features in Development
 
 #### High Priority
+- [ ] **Platform Usage Dashboard**
+  - [ ] Real-time user activity monitoring (DAU/MAU)
+  - [ ] Session duration and frequency analytics
+  - [ ] Feature adoption rates and usage patterns
+  - [ ] User retention and churn analysis
+  - [ ] Geographic usage distribution
+  - [ ] Device and browser analytics
+  - [ ] Performance metrics (load times, error rates)
+  - [ ] Revenue and subscription analytics
+  - [ ] Export capabilities (PDF, CSV, Excel)
+  - **Story Points**: 21 | **Assignee**: TBD | **Status**: Not Started | **Priority**: CRITICAL
+
 - [ ] **Enhanced Voice Recognition Accuracy**
   - [ ] Implement noise cancellation for better speech recognition
   - [ ] Add support for different English accents (British, Australian, Indian)
@@ -217,17 +229,17 @@ This document contains the product backlog with planned features, improvements, 
   - **Story Points**: 3 | **Priority**: Low
 
 ### 🔍 Analytics & Insights
-- [ ] **Learning Analytics Dashboard**
+- [ ] **Learning Analytics Dashboard** *(Merged into Platform Usage Dashboard v1.2.0)*
   - Time spent learning trends
   - Skill improvement visualization
   - Comparative progress metrics
-  - **Story Points**: 13 | **Priority**: Medium
+  - **Story Points**: 13 | **Priority**: Medium | **Status**: Consolidated
 
-- [ ] **Usage Analytics**
+- [ ] **Usage Analytics** *(Merged into Platform Usage Dashboard v1.2.0)*
   - Feature usage tracking
   - User engagement metrics
   - A/B testing framework
-  - **Story Points**: 8 | **Priority**: Low
+  - **Story Points**: 8 | **Priority**: Low | **Status**: Consolidated
 
 ---
 
@@ -341,6 +353,10 @@ A feature is considered complete when:
 ## 📝 Recent Updates
 
 ### August 2, 2025
+- **Platform Usage Dashboard**: Added as CRITICAL priority feature for v1.2.0
+  - Comprehensive analytics for user activity, retention, and platform performance
+  - Real-time monitoring capabilities with export functionality
+  - Essential for business intelligence and product optimization
 - **Chrome Speech Recognition Issue**: Investigated and documented root cause
   - Issue is external dependency on Google Speech API servers
   - Added network diagnostics and improved error handling
