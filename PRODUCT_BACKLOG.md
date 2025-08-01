@@ -51,8 +51,11 @@ This document contains the product backlog with planned features, improvements, 
   - **Story Points**: 8 | **Assignee**: TBD | **Status**: Not Started
 
 ### 🐛 Bug Fixes
-- [ ] **Fix Chrome speech recognition timeout issues**
-  - **Priority**: High | **Status**: Not Started
+- [x] **Fix Chrome speech recognition timeout issues**
+  - **Priority**: High | **Status**: Investigated - External Limitation
+  - **Root Cause**: Chrome requires connection to Google Speech API servers
+  - **Solution**: Network connectivity issue, not code bug
+  - **Next Steps**: Consider implementing offline speech recognition alternative
 - [ ] **Resolve WebSocket connection drops on mobile**
   - **Priority**: High | **Status**: Not Started
 - [ ] **Fix audio playback queue synchronization**
@@ -75,6 +78,13 @@ This document contains the product backlog with planned features, improvements, 
   - Allow users to create personalized lessons
   - Integration with user's professional vocabulary
   - **Story Points**: 21 | **Priority**: High
+
+- [ ] **Offline Speech Recognition System**
+  - Implement WebRTC-based local speech processing
+  - Fallback for network connectivity issues
+  - Support for corporate/restricted networks
+  - **Story Points**: 21 | **Priority**: High
+  - **Motivation**: Address Chrome Speech API connectivity limitations
 
 - [ ] **Group Learning Sessions**
   - Multi-user conversation rooms
@@ -325,5 +335,14 @@ A feature is considered complete when:
 
 *This backlog is a living document and is updated regularly based on user feedback, market demands, and technical constraints.*
 
-**Last Updated**: August 2025  
+**Last Updated**: August 2, 2025  
 **Next Review**: September 15, 2025
+
+## 📝 Recent Updates
+
+### August 2, 2025
+- **Chrome Speech Recognition Issue**: Investigated and documented root cause
+  - Issue is external dependency on Google Speech API servers
+  - Added network diagnostics and improved error handling
+  - Planned offline speech recognition system for v1.3.0
+- **Development Process**: Enhanced debugging capabilities and retry logic
