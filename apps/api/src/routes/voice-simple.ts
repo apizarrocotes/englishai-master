@@ -183,12 +183,12 @@ Guidelines:
 2. Naturally incorporate lesson vocabulary and grammar points
 3. Provide gentle corrections when needed
 4. Keep responses conversational and encouraging
-5. Ask follow-up questions to practice specific skills`;
-  }
+5. Ask follow-up questions to practice specific skills
 6. Adapt difficulty to student's level
 7. Make the conversation realistic and practical
 
 Respond naturally as if you are actually in this scenario with the student.`;
+  }
 
   return context;
 }

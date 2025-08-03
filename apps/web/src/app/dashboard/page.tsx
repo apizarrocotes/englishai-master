@@ -3,7 +3,7 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { LogOut, User, BookOpen, MessageCircle, TrendingUp } from 'lucide-react';
+import { LogOut, User, BookOpen, MessageCircle, TrendingUp, BarChart3 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
 import TeacherHero from '@/components/dashboard/TeacherHero';
 
@@ -106,7 +106,7 @@ export default function DashboardPage() {
         <TeacherHero />
 
         {/* Dashboard Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {/* Lessons Card */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -185,6 +185,35 @@ export default function DashboardPage() {
             </p>
             <button className="w-full bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
               View Progress
+            </button>
+          </motion.div>
+
+          {/* Analytics Dashboard Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-6 h-6 text-orange-600" />
+              </div>
+              <span className="text-sm font-medium text-orange-600 bg-orange-50 px-2 py-1 rounded-full">
+                NEW
+              </span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Analytics Dashboard
+            </h3>
+            <p className="text-gray-600 text-sm mb-4">
+              View platform usage metrics and real-time analytics
+            </p>
+            <button 
+              onClick={() => router.push('/analytics')}
+              className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+            >
+              View Dashboard
             </button>
           </motion.div>
         </div>

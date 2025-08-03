@@ -19,6 +19,7 @@ import { analyticsRoutes } from '@/routes/analytics';
 import { voiceRoutes } from '@/routes/voice';
 import { voiceSimpleRoutes } from '@/routes/voice-simple';
 import teacherProfileRoutes from '@/routes/teacher-profiles';
+import { sessionTracker } from '@/middleware/auth';
 // import { setupSocketHandlers } from '@/services/socket';
 // import { setupVoiceWebSocket } from '@/services/VoiceWebSocketHandler';
 
@@ -47,13 +48,16 @@ const getDefaultOrigins = () => {
   const ipAddress = process.env.IP_ADDRESS || 'localhost';
   return [
     'http://localhost:3000', // Always allow localhost for development
-    `http://${ipAddress}:3000` // Dynamic IP from environment
+    'https://localhost:3000', // HTTPS localhost for development
+    `http://${ipAddress}:3000`, // Dynamic IP from environment
+    `https://${ipAddress}:3000` // HTTPS Dynamic IP from environment
   ];
 };
 
 const allowedOrigins = [
   ...getDefaultOrigins(),
   'https://89.58.17.78:3000',
+  'http://89.58.17.78:3000', // Also allow HTTP version
   process.env.FRONTEND_URL
 ].filter(Boolean) as string[];
 
@@ -181,6 +185,9 @@ app.get('/api/learning/paths-direct', async (req, res) => {
     });
   }
 });
+
+// Session tracking middleware for analytics
+app.use('/api', sessionTracker);
 
 // API Routes
 app.use('/api/auth', authRoutes);

@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Brain, LogOut, User } from 'lucide-react';
+import { Brain, LogOut, User, BarChart3 } from 'lucide-react';
 import { useUser, useIsAuthenticated, useAuthActions } from '@/stores/authStore';
 import AuthButtons from '@/components/ui/AuthButtons';
 import TeacherSelector from '@/components/navigation/TeacherSelector';
@@ -52,6 +52,31 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Navigation Items */}
           {isAuthenticated && user ? (
             <div className="flex items-center space-x-4">
+              {/* Navigation Links */}
+              <div className="hidden md:flex items-center space-x-2">
+                <Link
+                  href="/dashboard"
+                  className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/learning"
+                  className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 hover:bg-gray-50 rounded-md transition-colors"
+                >
+                  Learning
+                </Link>
+                {/* Analytics link - prominent display */}
+                <Link
+                  href="/analytics"
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center space-x-2 shadow-sm"
+                  title="Platform Usage Dashboard"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Analytics Dashboard</span>
+                </Link>
+              </div>
+
               {/* AI Teacher Selector */}
               <TeacherSelector />
               
