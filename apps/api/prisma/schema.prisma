@@ -30,6 +30,7 @@ model User {
   learningAnalytics     LearningAnalytics[]
   teacherPreferences    UserTeacherPreferences?
   customTeacherProfiles TeacherProfile[]
+  sessionAnalytics      UserSessionAnalytics[]
 
   @@map("users")
 }
@@ -244,6 +245,110 @@ model UserTeacherPreferences {
   @@map("user_teacher_preferences")
 }
 
+// Platform Analytics Models
+model PlatformAnalytics {
+  id              String   @id @default(cuid())
+  date            DateTime @db.Date
+  dailyActiveUsers Int     @default(0) @map("daily_active_users")
+  monthlyActiveUsers Int   @default(0) @map("monthly_active_users")
+  totalSessions   Int      @default(0) @map("total_sessions")
+  totalRevenue    Decimal  @default(0) @db.Decimal(10, 2) @map("total_revenue")
+  avgSessionLength Decimal @default(0) @db.Decimal(8, 2) @map("avg_session_length")
+  newUsers        Int      @default(0) @map("new_users")
+  returningUsers  Int      @default(0) @map("returning_users")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([date])
+  @@map("platform_analytics")
+}
+
+model FeatureUsageAnalytics {
+  id           String   @id @default(cuid())
+  date         DateTime @db.Date
+  feature      String   // 'voice_conversations', 'text_chat', 'lesson_practice'
+  usageCount   Int      @default(0) @map("usage_count")
+  uniqueUsers  Int      @default(0) @map("unique_users")
+  totalTime    Int      @default(0) @map("total_time") // in seconds
+  avgTimePerUse Decimal @default(0) @db.Decimal(8, 2) @map("avg_time_per_use")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, feature])
+  @@map("feature_usage_analytics")
+}
+
+model GeographicAnalytics {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  country     String
+  countryCode String   @map("country_code")
+  users       Int      @default(0)
+  sessions    Int      @default(0)
+  totalTime   Int      @default(0) @map("total_time") // in seconds
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, countryCode])
+  @@map("geographic_analytics")
+}
+
+model DeviceAnalytics {
+  id        String   @id @default(cuid())
+  date      DateTime @db.Date
+  deviceType String  @map("device_type") // 'desktop', 'mobile', 'tablet'
+  browser   String   // 'chrome', 'firefox', 'safari', 'edge', 'other'
+  os        String   // 'windows', 'macos', 'linux', 'ios', 'android'
+  users     Int      @default(0)
+  sessions  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([date, deviceType, browser, os])
+  @@map("device_analytics")
+}
+
+model PerformanceAnalytics {
+  id               String   @id @default(cuid())
+  date             DateTime @db.Date
+  avgResponseTime  Decimal  @default(0) @db.Decimal(8, 2) @map("avg_response_time") // in milliseconds
+  p95ResponseTime  Decimal  @default(0) @db.Decimal(8, 2) @map("p95_response_time")
+  p99ResponseTime  Decimal  @default(0) @db.Decimal(8, 2) @map("p99_response_time")
+  errorRate        Decimal  @default(0) @db.Decimal(5, 4) @map("error_rate") // percentage
+  errorCount       Int      @default(0) @map("error_count")
+  uptimePercentage Decimal  @default(100) @db.Decimal(5, 2) @map("uptime_percentage")
+  incidentCount    Int      @default(0) @map("incident_count")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@unique([date])
+  @@map("performance_analytics")
+}
+
+model UserSessionAnalytics {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id")
+  sessionId   String   @unique @map("session_id")
+  startTime   DateTime @map("start_time")
+  endTime     DateTime? @map("end_time")
+  duration    Int?     // in seconds
+  pageViews   Int      @default(0) @map("page_views")
+  interactions Int     @default(0)
+  deviceType  String   @map("device_type")
+  browser     String
+  os          String
+  country     String?
+  countryCode String?  @map("country_code")
+  ipAddress   String   @map("ip_address")
+  userAgent   String   @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_session_analytics")
+}
+
 // Indexes for performance
 // User indexes
 // @@index([email])
@@ -255,3 +360,10 @@ model UserTeacherPreferences {
 // Progress indexes  
 // @@index([userId]) on UserProgress
 // @@index([userId, date]) on LearningAnalytics
+
+// Analytics indexes
+// @@index([date]) on PlatformAnalytics
+// @@index([date, feature]) on FeatureUsageAnalytics
+// @@index([date, countryCode]) on GeographicAnalytics
+// @@index([date, deviceType]) on DeviceAnalytics
+// @@index([userId, startTime]) on UserSessionAnalytics
