@@ -21,7 +21,7 @@ interface GeographicChartProps {
   interactive?: boolean;
 }
 
-const geoUrl = "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
+const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
 const GeographicChart: React.FC<GeographicChartProps> = ({ 
   height = 400, 
@@ -176,17 +176,25 @@ const GeographicChart: React.FC<GeographicChartProps> = ({
                 </Geographies>
                 
                 {/* Markers for top countries */}
-                {dataToUse.slice(0, 3).map((country) => (
-                  <Marker key={country.countryCode} coordinates={country.coordinates}>
-                    <circle
-                      r={Math.sqrt(country.users) / 8}
-                      fill="#EF4444"
-                      fillOpacity={0.6}
-                      stroke="#FFFFFF"
-                      strokeWidth={1}
-                    />
-                  </Marker>
-                ))}
+                {dataToUse.slice(0, 3).map((country) => {
+                  const coords = country.coordinates;
+                  // Skip markers with invalid coordinates
+                  if (!coords || coords.length !== 2 || isNaN(coords[0]) || isNaN(coords[1]) || (coords[0] === 0 && coords[1] === 0)) {
+                    return null;
+                  }
+                  
+                  return (
+                    <Marker key={country.countryCode} coordinates={coords}>
+                      <circle
+                        r={Math.max(3, Math.sqrt(country.users) / 8)}
+                        fill="#EF4444"
+                        fillOpacity={0.6}
+                        stroke="#FFFFFF"
+                        strokeWidth={1}
+                      />
+                    </Marker>
+                  );
+                })}
               </ZoomableGroup>
             </ComposableMap>
           </div>

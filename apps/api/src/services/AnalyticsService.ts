@@ -984,12 +984,33 @@ export class AnalyticsService {
 
   private getCountryCoordinates(countryCode: string): [number, number] {
     const coordinates: Record<string, [number, number]> = {
-      'ES': [40.4168, -3.7038], // Spain
-      'US': [39.8283, -98.5795], // United States
-      'MX': [23.6345, -102.5528], // Mexico
-      'AR': [-38.4161, -63.6167]  // Argentina
+      'ES': [-3.7038, 40.4168], // Spain [lng, lat]
+      'US': [-98.5795, 39.8283], // United States
+      'MX': [-102.5528, 23.6345], // Mexico
+      'AR': [-63.6167, -38.4161], // Argentina
+      'GB': [-2.0, 54.0], // United Kingdom
+      'DE': [10.5, 51.5], // Germany
+      'FR': [2.5, 46.0], // France
+      'CA': [-106.0, 56.0], // Canada
+      'AU': [133.0, -27.0], // Australia
+      'JP': [138.0, 36.0], // Japan
+      'BR': [-47.0, -14.0], // Brazil
+      'IT': [12.5, 42.0], // Italy
+      'IN': [77.0, 20.0], // India
+      'CN': [104.0, 35.0], // China
+      'RU': [105.0, 61.0], // Russia
+      'ZA': [24.0, -29.0], // South Africa
+      'KR': [127.5, 36.0], // South Korea
+      'NL': [5.75, 52.5], // Netherlands
+      'SE': [15.0, 60.0], // Sweden
+      'NO': [8.0, 60.5] // Norway
     };
-    return coordinates[countryCode] || [0, 0];
+    const coords = coordinates[countryCode];
+    if (!coords) {
+      console.warn(`No coordinates found for country code: ${countryCode}`);
+      return [0, 0]; // Default to [0, 0] if country not found
+    }
+    return coords;
   }
 
   private getDefaultPerformanceMetrics(): PerformanceMetrics {
